@@ -19,6 +19,7 @@
 
 using namespace std;
 
+bool one_socket = true;
 static WSADATA wsa;
 static struct sockaddr_in si_send;
 static SOCKET s_send;
@@ -127,12 +128,8 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 		WSACleanup();
 		return SendToError;
 	}
-	if (ip_send == ip_recv && port_send == port_recv) {
-		// Use the same socket for sending and receiving
-		si_recv = si_send;
-		s_recv = s_send;
-		slen_recv = slen_send;
-	} else {
+	if (ip_send != ip_recv || port_send != port_recv) {
+		one_socket = false;
 		// Sleep for a while, so that conflicts in the WebRTC signaling can be avoided
 		std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 		// Create receive socket
@@ -166,11 +163,21 @@ void listen_for_data() {
 		// called multiple times, this might cause two processes reading from the socket, resulting in compromised data.
 		std::unique_lock<std::mutex> guard(m_recv_data);
 
-		if ((size = recvfrom(s_recv, buf, BUFLEN, 0, (struct sockaddr*)&si_recv, &slen_recv)) == SOCKET_ERROR) {
-			custom_log("ERROR: recvfrom() failed with error code " + WSAGetLastError(), true, Color::Red);
-			guard.unlock();
-			exit(EXIT_FAILURE);
+		if (one_socket) {
+			if ((size = recvfrom(s_send, buf, BUFLEN, 0, (struct sockaddr*)&si_recv, &slen_recv)) == SOCKET_ERROR) {
+				custom_log("ERROR: recvfrom() failed with error code " + WSAGetLastError(), true, Color::Red);
+				guard.unlock();
+				return;
+			}
+		} else {
+			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, (struct sockaddr*)&si_recv, &slen_recv)) == SOCKET_ERROR) {
+				custom_log("ERROR: recvfrom() failed with error code " + WSAGetLastError(), true, Color::Red);
+				guard.unlock();
+				return;
+			}
 		}
+
+		custom_log("Received packet", false, Color::Yellow);
 
 		struct PacketType p_type(&buf, size);
 		if (p_type.type == 1) {
