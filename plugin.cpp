@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 
+
 // Maximum length of buffer
 #define BUFLEN 1300
 
@@ -207,6 +208,8 @@ void start_listening() {
 
 void clean_up() {
 	custom_log("Attempting to clean up", false, Color::Orange);
+	closesocket(s_recv);
+	closesocket(s_send);
 	if (!cleaned) {
 		cleaned = true;
 		keep_working = false;
