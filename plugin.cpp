@@ -128,7 +128,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 		WSACleanup();
 		return SendToError;
 	}
-	if (ip_send != ip_recv || port_send != port_recv) {
+	if (string(ip_send) != string(ip_recv) || port_send != port_recv) {
 		one_socket = false;
 		// Sleep for a while, so that conflicts in the WebRTC signaling can be avoided
 		std::this_thread::sleep_for(std::chrono::milliseconds(2000));
@@ -164,17 +164,21 @@ void listen_for_data() {
 		std::unique_lock<std::mutex> guard(m_recv_data);
 
 		if (one_socket) {
-			if ((size = recvfrom(s_send, buf, BUFLEN, 0, (struct sockaddr*)&si_recv, &slen_recv)) == SOCKET_ERROR) {
+			custom_log("About to receive from s_send", false, Color::Yellow);
+			if ((size = recvfrom(s_send, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
 				custom_log("ERROR: recvfrom() failed with error code " + WSAGetLastError(), true, Color::Red);
 				guard.unlock();
 				return;
 			}
+			custom_log("Received packet from s_send wit size " + to_string(size), false, Color::Yellow);
 		} else {
-			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, (struct sockaddr*)&si_recv, &slen_recv)) == SOCKET_ERROR) {
+			custom_log("About to receive from s_recv", false, Color::Yellow);
+			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
 				custom_log("ERROR: recvfrom() failed with error code " + WSAGetLastError(), true, Color::Red);
 				guard.unlock();
 				return;
 			}
+			custom_log("Received packet from s_recv wit size " + to_string(size), false, Color::Yellow);
 		}
 
 		custom_log("Received packet", false, Color::Yellow);
