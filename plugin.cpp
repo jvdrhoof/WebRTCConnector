@@ -20,7 +20,9 @@
 using namespace std;
 
 bool one_socket = true;
+#ifdef WIN32
 static WSADATA wsa;
+#endif
 static struct sockaddr_in si_send;
 static SOCKET s_send;
 int slen_send = sizeof(si_send);
@@ -62,7 +64,8 @@ inline string get_current_date_time(bool date_only) {
 	time_t now = time(0);
 	char buf[80];
 	struct tm tstruct;
-	localtime_s(&tstruct, &now);
+    // xxxjack I think the parameters were in the wrong order...
+	localtime_r( &now, &tstruct);
 	if (date_only) {
 		strftime(buf, sizeof(buf), "%Y-%m-%d", &tstruct);
 	} else {
@@ -105,10 +108,12 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	tile_buffer.set_number_of_tiles(number_of_tiles);
 	data_parser.set_number_of_tiles(number_of_tiles);
 
+#ifdef WIN32
 	custom_log("Setting up socket to " + string(ip_send), false, Color::Orange);
 	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 		return StartUpError;
 	}
+#endif
 	// Generic parameters
 	ULONG buf_size = 524288000;
 	char t[BUFLEN] = { 0 };
@@ -122,7 +127,11 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	setsockopt(s_send, SOL_SOCKET, SO_RCVBUF, (char*)&buf_size, sizeof(ULONG));
 	si_send.sin_family = AF_INET;
 	si_send.sin_port = htons(port_send);
-	inet_pton(AF_INET, ip_send, &si_send.sin_addr.S_un.S_addr);
+#ifdef WIN32
+    inet_pton(AF_INET, ip_send, &si_send.sin_addr.S_un.S_addr);
+#else
+    inet_pton(AF_INET, ip_send, &si_send.sin_addr.s_addr);
+#endif
 	if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
 		custom_log("ERROR: failed to send to socket on port " + to_string(port_send), false, Color::Red);
 		WSACleanup();
@@ -141,8 +150,12 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 		setsockopt(s_recv, SOL_SOCKET, SO_RCVBUF, (char*)&buf_size, sizeof(ULONG));
 		si_recv.sin_family = AF_INET;
 		si_recv.sin_port = htons(port_recv);
-		inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.S_un.S_addr);
-		if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
+#ifdef WIN32
+        inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.S_un.S_addr);
+#else
+        inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.s_addr);
+#endif
+        if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
 			custom_log("ERROR: failed to send to socket on port " + to_string(port_recv), false, Color::Red);
 			WSACleanup();
 			return SendToError;
@@ -166,7 +179,7 @@ void listen_for_data() {
 		if (one_socket) {
 			custom_log("About to receive from s_send", false, Color::Yellow);
 			if ((size = recvfrom(s_send, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
-				custom_log("ERROR: recvfrom() failed with error code " + WSAGetLastError(), true, Color::Red);
+				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), true, Color::Red);
 				guard.unlock();
 				return;
 			}
@@ -174,7 +187,7 @@ void listen_for_data() {
 		} else {
 			custom_log("About to receive from s_recv", false, Color::Yellow);
 			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
-				custom_log("ERROR: recvfrom() failed with error code " + WSAGetLastError(), true, Color::Red);
+				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), true, Color::Red);
 				guard.unlock();
 				return;
 			}

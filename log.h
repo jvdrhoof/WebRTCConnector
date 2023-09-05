@@ -4,8 +4,7 @@
 #include <string>
 #include <stdio.h>
 #include <sstream>
-
-#define DLLExport __declspec(dllexport)
+#include "framework.h"
 
 extern "C"
 {
