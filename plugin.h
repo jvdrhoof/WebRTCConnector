@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef WIN32
 #define DLLExport __declspec(dllexport)
+#else
+#define DLLExport
+#endif
 
 // All exported functions should be declared here
 extern "C"

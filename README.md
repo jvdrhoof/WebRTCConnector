@@ -2,6 +2,8 @@
 
 This repository contains the Unity plugin that can be used to communicate with the L4S WSL2 client. You can build the plugin with Visual Studio (make sure you build the release version and not the debug one) and copy the .dll file to your Unity application.
 
+> Note by Jack: there's now also a `Makefile` to build the plugin on Mac (tested) and Linux (untested).
+
 If you are using WSL and you want to know what ip to use check: https://github.ugent.be/madfr/l4s-proxy-windows-testapp
 
 ## C# Examples
