@@ -164,6 +164,7 @@
     <ClInclude Include="received_control.hpp" />
     <ClInclude Include="received_tile.hpp" />
     <ClInclude Include="buffer.hpp" />
+    <ClInclude Include="client_receiver.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="log.cpp" />

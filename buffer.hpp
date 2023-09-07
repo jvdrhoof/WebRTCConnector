@@ -1,3 +1,5 @@
+#pragma once
+
 #include "received_tile.hpp"
 #include <list>
 
@@ -28,6 +30,7 @@ public:
 		std::unique_lock<std::mutex> guard(m);
 		uint32_t frame_number = tile.get_frame_number();
 		if (frame_number < frame_numbers[tile_number]) {
+			guard.unlock();
 			return false;
 		}
 		tile_queues[tile_number].push(std::move(tile));

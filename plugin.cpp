@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "buffer.hpp"
+#include "client_receiver.hpp"
 #include "data_parser.hpp"
 #include "framework.h"
 #include "log.h"
@@ -10,6 +11,7 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <thread>
 
@@ -30,26 +32,28 @@ static struct sockaddr_in si_recv;
 static SOCKET s_recv;
 int slen_recv = sizeof(si_recv);
 
-static std::thread worker;
+uint32_t client_number;
+uint32_t number_of_tiles;
+
+static thread worker;
 static bool keep_working = true;
 static bool initialized = false;
-static bool cleaned = false;
 
-std::mutex m_recv_data;
-std::mutex m_send_data;
-std::mutex m_recv_control;
+mutex m_receivers;
+mutex m_recv_data;
+mutex m_send_data;
+mutex m_recv_control;
 
 static char* buf = (char*)malloc(BUFLEN);
 static char* buf_ori = buf;
-static std::map<std::pair<uint32_t, uint32_t>, ReceivedTile> recv_tiles;
-DataParser data_parser;
-Buffer tile_buffer;
-std::vector<uint32_t> frame_numbers;
-static std::queue<ReceivedControl> recv_controls;
+
+map<uint32_t, ClientReceiver*> client_receivers;
+vector<uint32_t> frame_numbers;
+queue<ReceivedControl> recv_controls;
 
 static string log_file = "";
 static bool debug_mode = false;
-std::mutex m_logging;
+mutex m_logging;
 
 
 enum CONNECTION_SETUP_CODE : int {
@@ -78,12 +82,12 @@ inline string get_current_date_time(bool date_only) {
 };
 
 void custom_log(string message, bool debug = true, Color color = Color::Black) {
-	std::unique_lock<std::mutex> guard(m_logging);
+	unique_lock<mutex> guard(m_logging);
 	if (!debug) {
 		Log::log(message, color);
 	}
 	if (log_file != "" && (!debug || debug_mode)) {
-		ofstream ofs(log_file.c_str(), std::ios_base::out | std::ios_base::app);
+		ofstream ofs(log_file.c_str(), ios_base::out | ios_base::app);
 		ofs << get_current_date_time(false) << '\t' << message << '\n';
 		ofs.close();
 	}
@@ -98,7 +102,22 @@ void set_logging(char* log_directory, bool debug) {
 	debug_mode = debug;
 }
 
-int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t number_of_tiles) {
+ClientReceiver* find_or_add_receiver(uint32_t client_number) {
+	ClientReceiver* c;
+	unique_lock<mutex> guard(m_receivers);
+	auto it = client_receivers.find(client_number);
+	if (it == client_receivers.end()) {
+		custom_log("Client number " + to_string(client_number) + " not yet registered, inserting now", false, Color::Yellow);
+		c = new ClientReceiver(client_number, number_of_tiles);
+		client_receivers.insert({ client_number, c });
+	} else {
+		c = it->second;
+	}
+	guard.unlock();
+	return c;
+}
+
+int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t n_tiles, uint32_t client_id) {
 	custom_log("Attempting to connect to sender " + string(ip_send) + ":" + to_string(port_send) +
 		" and receiver " + string(ip_recv) + ":" + to_string(port_recv), false, Color::Orange);
 	if (initialized) {
@@ -106,10 +125,10 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 		return AlreadyInitialized;
 	}
 
+	client_number = client_id;
+	number_of_tiles = n_tiles;
 	custom_log("Number of tiles: " + to_string(number_of_tiles));
-	frame_numbers = std::vector<uint32_t>(number_of_tiles, 0);
-	tile_buffer.set_number_of_tiles(number_of_tiles);
-	data_parser.set_number_of_tiles(number_of_tiles);
+	frame_numbers = vector<uint32_t>(number_of_tiles, 0);
 
 #ifdef WIN32
 	custom_log("Setting up socket to " + string(ip_send), false, Color::Orange);
@@ -143,7 +162,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	if (string(ip_send) != string(ip_recv) || port_send != port_recv) {
 		one_socket = false;
 		// Sleep for a while, so that conflicts in the WebRTC signaling can be avoided
-		std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+		this_thread::sleep_for(chrono::milliseconds(2000));
 		// Create receive socket
 		if ((s_recv = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == SOCKET_ERROR) {
 			custom_log("ERROR: failed to create socket", false, Color::Red);
@@ -177,7 +196,7 @@ void listen_for_data() {
 
 		// Strictly speaking, the use of a mutex should be unneccesary. However, when the start_listening function is
 		// called multiple times, this might cause two processes reading from the socket, resulting in compromised data.
-		std::unique_lock<std::mutex> guard(m_recv_data);
+		unique_lock<mutex> guard(m_recv_data);
 
 		if (one_socket) {
 			custom_log("About to receive from s_send", false, Color::Yellow);
@@ -186,7 +205,7 @@ void listen_for_data() {
 				guard.unlock();
 				return;
 			}
-			custom_log("Received packet from s_send wit size " + to_string(size), false, Color::Yellow);
+			custom_log("Received packet from s_send with size " + to_string(size), false, Color::Yellow);
 		} else {
 			custom_log("About to receive from s_recv", false, Color::Yellow);
 			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
@@ -194,7 +213,7 @@ void listen_for_data() {
 				guard.unlock();
 				return;
 			}
-			custom_log("Received packet from s_recv wit size " + to_string(size), false, Color::Yellow);
+			custom_log("Received packet from s_recv with size " + to_string(size), false, Color::Yellow);
 		}
 
 		custom_log("Received packet", false, Color::Yellow);
@@ -202,9 +221,10 @@ void listen_for_data() {
 		struct PacketType p_type(&buf, size);
 		if (p_type.type == 1) {
 			struct PacketHeader p_header(&buf, size);
-			auto tile = recv_tiles.find(std::make_pair(p_header.frame_number, p_header.tile_number));
-			if (tile == recv_tiles.end()) {
-				auto e = recv_tiles.emplace(std::make_pair(p_header.frame_number, p_header.tile_number),
+			ClientReceiver* c = find_or_add_receiver(p_header.client_number);
+			auto tile = c->recv_tiles.find(make_pair(p_header.frame_number, p_header.tile_number));
+			if (tile == c->recv_tiles.end()) {
+				auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_number),
 					ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_number));
 				tile = e.first;
 				custom_log("Receiving new tile: " + p_header.string_representation(), false, Color::Yellow);
@@ -212,8 +232,9 @@ void listen_for_data() {
 			bool inserted = tile->second.insert(buf, p_header.file_offset, p_header.packet_length, size);
 			if (tile->second.is_complete()) {
 				custom_log("Completed: " + p_header.string_representation(), false, Color::Yellow);
-				tile_buffer.insert_tile(tile->second, p_header.tile_number);
-				recv_tiles.erase(std::make_pair(p_header.frame_number, p_header.tile_number));
+				c->tile_buffer.insert_tile(tile->second, p_header.tile_number);
+				c->recv_tiles.erase(make_pair(p_header.frame_number, p_header.tile_number));
+				custom_log("New buffer size: " + to_string(c->tile_buffer.get_buffer_size(p_header.tile_number)), false, Color::Yellow);
 			}
 		} else if (p_type.type == 2) {
 			recv_controls.push(ReceivedControl(buf, (uint32_t)size));
@@ -230,21 +251,23 @@ void listen_for_data() {
 
 void start_listening() {
 	custom_log("Starting new listening thread", false, Color::Yellow);
-	worker = std::thread(listen_for_data);
+	worker = thread(listen_for_data);
 }
 
 void clean_up() {
 	custom_log("Attempting to clean up", false, Color::Orange);
 	closesocket(s_recv);
 	closesocket(s_send);
-	if (!cleaned) {
-		cleaned = true;
+	if (initialized) {
 		keep_working = false;
 		if (worker.joinable())
 			worker.join();
-		// TODO: check if socket should be closed
-		// WSACleanup();
 		free(buf);
+		for (auto it = client_receivers.cbegin(); it != client_receivers.cend(); ) {
+			client_receivers.erase(it++);
+		}
+		frame_numbers.clear();
+		initialized = true;
 		custom_log("Cleaned up", false, Color::Orange);
 	} else {
 		custom_log("Already cleaned up", false, Color::Orange);
@@ -271,7 +294,7 @@ int send_tile(void* data, uint32_t size, uint32_t tile_number) {
 	uint32_t remaining = size;
 	int full_size_send = 0;
 	char* temp_d = reinterpret_cast<char*>(data);
-	std::unique_lock<std::mutex> guard(m_send_data);
+	unique_lock<mutex> guard(m_send_data);
 	while (remaining > 0) {
 		uint32_t next_size = 0;
 		if (remaining >= buflen_nheader) {
@@ -281,8 +304,9 @@ int send_tile(void* data, uint32_t size, uint32_t tile_number) {
 		}
 		char buf_msg[BUFLEN];
 		struct PacketHeader p_header {
-			frame_numbers[tile_number], tile_number, size, current_offset, next_size
+			client_number, frame_numbers[tile_number], tile_number, size, current_offset, next_size
 		};
+		custom_log("Sending packet: " + p_header.string_representation());
 		memcpy(buf_msg, &p_header, sizeof(p_header));
 		memcpy(buf_msg + sizeof(p_header), reinterpret_cast<char*>(data) + current_offset, next_size);
 		int size_send = send_packet(buf_msg, next_size + sizeof(PacketHeader), 1);
@@ -302,21 +326,23 @@ int send_tile(void* data, uint32_t size, uint32_t tile_number) {
 	return full_size_send;
 }
 
-int get_tile_size(uint32_t tile_number) {
-	custom_log("CALL: next_tile, " + to_string(tile_number));
-	while (tile_buffer.get_buffer_size(tile_number) == 0) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+int get_tile_size(uint32_t client_number, uint32_t tile_number) {
+	custom_log("CALL: get_tile_size, " + to_string(client_number) + ", " + to_string(tile_number));
+	ClientReceiver* c = find_or_add_receiver(client_number);
+	while (c->tile_buffer.get_buffer_size(tile_number) == 0) {
+		this_thread::sleep_for(chrono::milliseconds(1));
 	}
-	ReceivedTile t = tile_buffer.next(tile_number);
-	data_parser.set_current_tile(t, tile_number);
-	int tile_size = data_parser.get_current_tile_size(tile_number);
-	custom_log("RETURN: next_tile, " + to_string(tile_size));
+	ReceivedTile t = c->tile_buffer.next(tile_number);
+	c->data_parser.set_current_tile(t, tile_number);
+	int tile_size = c->data_parser.get_current_tile_size(tile_number);
+	custom_log("RETURN: get_tile_size, " + to_string(tile_size));
 	return tile_size;
 }
 
-void retrieve_tile(void* d, uint32_t size, uint32_t tile_number) {
-	custom_log("CALL: retrieve_tile");
-	int local_size = data_parser.fill_data_array(d, size, tile_number);
+void retrieve_tile(void* d, uint32_t size, uint32_t client_id, uint32_t tile_number) {
+	custom_log("CALL: retrieve_tile, " + to_string(client_id) + ", " + to_string(tile_number));
+	ClientReceiver* c = find_or_add_receiver(client_number);
+	int local_size = c->data_parser.fill_data_array(d, size, tile_number);
 	if (local_size > 0) {
 		custom_log("ERROR: retrieve_tile parameter size " + to_string(size) + " does not match registered data length" + to_string(local_size), false, Color::Red);
 	}
@@ -337,7 +363,7 @@ int send_control(void* data, uint32_t size) {
 
 int get_control_size() {
 	custom_log("CALL: next_control");
-	std::unique_lock<std::mutex> guard(m_recv_control);
+	unique_lock<mutex> guard(m_recv_control);
 	if (recv_controls.empty()) {
 		guard.unlock();
 		custom_log("RETURN: next_frame, -1");
@@ -351,8 +377,8 @@ int get_control_size() {
 
 void retrieve_control(void* d, uint32_t size) {
 	custom_log("CALL: retrieve_control");
-	std::unique_lock<std::mutex> guard(m_recv_control);
-	auto next_control_packet = std::move(recv_controls.front());
+	unique_lock<mutex> guard(m_recv_control);
+	auto next_control_packet = move(recv_controls.front());
 	recv_controls.pop();
 	guard.unlock();
 	uint32_t local_size = (uint32_t)next_control_packet.get_data_length();
