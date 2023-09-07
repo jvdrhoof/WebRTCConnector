@@ -64,8 +64,11 @@ inline string get_current_date_time(bool date_only) {
 	time_t now = time(0);
 	char buf[80];
 	struct tm tstruct;
-    // xxxjack I think the parameters were in the wrong order...
+#if defined(_WIN64) || defined(_WIN32)
+	localtime_s(&tstruct, &now);
+#else
 	localtime_r( &now, &tstruct);
+#endif
 	if (date_only) {
 		strftime(buf, sizeof(buf), "%Y-%m-%d", &tstruct);
 	} else {
