@@ -110,6 +110,7 @@ ClientReceiver* find_or_add_receiver(uint32_t client_number) {
 		custom_log("Client number " + to_string(client_number) + " not yet registered, inserting now", false, Color::Yellow);
 		c = new ClientReceiver(client_number, number_of_tiles);
 		client_receivers.insert({ client_number, c });
+		custom_log("Client number " + to_string(client_number) + " registered. Make sure you are receiving the correct client ID!", false, Color::Yellow);
 	} else {
 		c = it->second;
 	}
@@ -199,24 +200,18 @@ void listen_for_data() {
 		unique_lock<mutex> guard(m_recv_data);
 
 		if (one_socket) {
-			custom_log("About to receive from s_send", false, Color::Yellow);
 			if ((size = recvfrom(s_send, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
 				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), true, Color::Red);
 				guard.unlock();
 				return;
 			}
-			custom_log("Received packet from s_send with size " + to_string(size), false, Color::Yellow);
 		} else {
-			custom_log("About to receive from s_recv", false, Color::Yellow);
 			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
 				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), true, Color::Red);
 				guard.unlock();
 				return;
 			}
-			custom_log("Received packet from s_recv with size " + to_string(size), false, Color::Yellow);
 		}
-
-		custom_log("Received packet", false, Color::Yellow);
 
 		struct PacketType p_type(&buf, size);
 		if (p_type.type == 1) {
@@ -378,7 +373,7 @@ int get_control_size() {
 void retrieve_control(void* d, uint32_t size) {
 	custom_log("CALL: retrieve_control");
 	unique_lock<mutex> guard(m_recv_control);
-	auto next_control_packet = move(recv_controls.front());
+	auto next_control_packet = std::move(recv_controls.front());
 	recv_controls.pop();
 	guard.unlock();
 	uint32_t local_size = (uint32_t)next_control_packet.get_data_length();

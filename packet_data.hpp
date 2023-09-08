@@ -60,7 +60,7 @@ struct PacketHeader {
 	std::string string_representation() {
 		return "Client number: " +
 			std::to_string(client_number) +
-			", frame number : " +
+			", frame number: " +
 			std::to_string(frame_number) +
 			", tile number: " +
 			std::to_string(tile_number) +
