@@ -152,7 +152,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	our_address.sin_family = AF_INET;
 	our_address.sin_port = htons(port_send + 1);
 	our_address.sin_addr.s_addr = htonl(INADDR_ANY);
-	if (bind(s_send, (struct sockaddr*)&our_address, sizeof(our_address)) < 0) {
+	if (::bind(s_send, (struct sockaddr*)&our_address, sizeof(our_address)) < 0) {
 		custom_log("connect_to_proxy: bind: ERROR: " + std::to_string(errno));
 	}
 	if (setsockopt(s_send, SOL_SOCKET, SO_RCVBUF, (char*)&buf_size, sizeof(ULONG)) < 0) {
@@ -169,7 +169,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 #endif
 
 	sockaddr_in our_addr;
-	int our_addr_len = sizeof(our_addr);
+	unsigned int our_addr_len = sizeof(our_addr);
 	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
 	custom_log("sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), true, Color::Orange);
 
@@ -198,7 +198,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 #endif
 
 		sockaddr_in our_addr;
-		int our_addr_len = sizeof(our_addr);
+		unsigned int our_addr_len = sizeof(our_addr);
 		getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
 		custom_log("SHOULD NOT BE EXECUTED: sendto: our port is " + to_string(our_addr.sin_port) + ", their port is " + to_string(si_recv.sin_port), true, Color::Orange);
 
@@ -224,10 +224,10 @@ void listen_for_data() {
 
 		sockaddr_in other_addr;
 		memset(&other_addr, 0, sizeof(other_addr));
-		int other_addr_len = sizeof(other_addr);
+		unsigned int other_addr_len = sizeof(other_addr);
 		if (one_socket) {
 			sockaddr_in our_addr;
-			int our_addr_len = sizeof(our_addr);
+			unsigned int our_addr_len = sizeof(our_addr);
 			if (getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len) < 0) {
 
 			}
@@ -312,7 +312,7 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 	memcpy(&buf_msg[sizeof(packet_type)], data, size);
 
 	sockaddr_in our_addr;
-	int our_addr_len = sizeof(our_addr);
+	unsigned int our_addr_len = sizeof(our_addr);
 	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
 	custom_log("send_packet: sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), true, Color::Green);
 
