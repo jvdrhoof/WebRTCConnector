@@ -95,10 +95,10 @@ void custom_log(string message, bool debug = true, Color color = Color::Black) {
 }
 
 void set_logging(char* log_directory, bool debug) {
-	Log::log("Setting log directory to " + string(log_directory), Color::Orange);
+	Log::log("set_logging: Setting log directory to " + string(log_directory), Color::Orange);
 	log_file = string(log_directory) + "\\" + get_current_date_time(true) + ".txt";
 	string debugging = debug ? "true" : "false";
-	Log::log("Setting debug mode to " + debugging, Color::Orange);
+	Log::log("set_logging: Setting debug mode to " + debugging, Color::Orange);
 	debug_mode = debug;
 }
 
@@ -107,10 +107,10 @@ ClientReceiver* find_or_add_receiver(uint32_t client_number) {
 	unique_lock<mutex> guard(m_receivers);
 	auto it = client_receivers.find(client_number);
 	if (it == client_receivers.end()) {
-		custom_log("Client number " + to_string(client_number) + " not yet registered, inserting now", false, Color::Yellow);
+		custom_log("find_or_add_receiver: Client number " + to_string(client_number) + " not yet registered, inserting now", false, Color::Yellow);
 		c = new ClientReceiver(client_number, number_of_tiles);
 		client_receivers.insert({ client_number, c });
-		custom_log("Client number " + to_string(client_number) + " registered. Make sure you are receiving the correct client ID!", false, Color::Yellow);
+		custom_log("find_or_add_receiver: Client number " + to_string(client_number) + " registered. Make sure you are receiving the correct client ID!", false, Color::Yellow);
 	} else {
 		c = it->second;
 	}
@@ -119,20 +119,20 @@ ClientReceiver* find_or_add_receiver(uint32_t client_number) {
 }
 
 int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t n_tiles, uint32_t client_id) {
-	custom_log("Attempting to connect to sender " + string(ip_send) + ":" + to_string(port_send) +
+	custom_log("connect_to_proxy: Attempting to connect to sender " + string(ip_send) + ":" + to_string(port_send) +
 		" and receiver " + string(ip_recv) + ":" + to_string(port_recv), false, Color::Orange);
 	if (initialized) {
-		custom_log("DLL already initialized, no changes are possible", false, Color::Orange);
+		custom_log("connect_to_proxy: DLL already initialized, no changes are possible", false, Color::Orange);
 		return AlreadyInitialized;
 	}
 
 	client_number = client_id;
 	number_of_tiles = n_tiles;
-	custom_log("Number of tiles: " + to_string(number_of_tiles), false, Color::Orange);
+	custom_log("connect_to_proxy: Number of tiles: " + to_string(number_of_tiles), false, Color::Orange);
 	frame_numbers = vector<uint32_t>(number_of_tiles, 0);
 
 #ifdef WIN32
-	custom_log("Setting up socket to " + string(ip_send), false, Color::Orange);
+	custom_log("connect_to_proxy: Setting up socket to " + string(ip_send), false, Color::Orange);
 	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 		return StartUpError;
 	}
@@ -143,7 +143,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	t[0] = (char)number_of_tiles;
 	// Create send socket
 	if ((s_send = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == SOCKET_ERROR) {
-		custom_log("ERROR: failed to create socket", false, Color::Red);
+		custom_log("connect_to_proxy: ERROR: failed to create socket", false, Color::Red);
 		WSACleanup();
 		return SocketCreationError;
 	}
@@ -171,10 +171,10 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	sockaddr_in our_addr;
 	socklen_t our_addr_len = sizeof(our_addr);
 	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
-	custom_log("sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), false, Color::Orange);
+	custom_log("connect_to_proxy: sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), false, Color::Orange);
 
 	if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
-		custom_log("ERROR: failed to send to socket on port " + to_string(port_send), false, Color::Red);
+		custom_log("connect_to_proxy: ERROR: failed to send to socket on port " + to_string(port_send), false, Color::Red);
 		WSACleanup();
 		return SendToError;
 	}
@@ -184,7 +184,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 		this_thread::sleep_for(chrono::milliseconds(2000));
 		// Create receive socket
 		if ((s_recv = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == SOCKET_ERROR) {
-			custom_log("ERROR: failed to create socket", false, Color::Red);
+			custom_log("connect_to_proxy: ERROR: failed to create socket", false, Color::Red);
 			WSACleanup();
 			return SocketCreationError;
 		}
@@ -200,21 +200,21 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 		sockaddr_in our_addr;
 		socklen_t our_addr_len = sizeof(our_addr);
 		getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
-		custom_log("SHOULD NOT BE EXECUTED: sendto: our port is " + to_string(our_addr.sin_port) + ", their port is " + to_string(si_recv.sin_port), true, Color::Orange);
+		custom_log("connect_to_proxy: SHOULD NOT BE EXECUTED: sendto: our port is " + to_string(our_addr.sin_port) + ", their port is " + to_string(si_recv.sin_port), true, Color::Orange);
 
         if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
-			custom_log("ERROR: failed to send to socket on port " + to_string(port_recv), false, Color::Red);
+			custom_log("connect_to_proxy: ERROR: failed to send to socket on port " + to_string(port_recv), false, Color::Red);
 			WSACleanup();
 			return SendToError;
 		}
 	}
 	initialized = true;
-	custom_log("Successfully set up sockets", false, Color::Orange);
+	custom_log("connect_to_proxy: Successfully set up sockets", false, Color::Orange);
 	return ConnectionSuccess;
 }
 
 void listen_for_data() {
-	custom_log("Starting to listen for incoming data", false, Color::Yellow);
+	custom_log("listen_for_data: Starting to listen for incoming data", false, Color::Yellow);
 	while (keep_working) {
 		size_t size = 0;
 
@@ -231,15 +231,15 @@ void listen_for_data() {
 			if (getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len) < 0) {
 
 			}
-			custom_log("Attempting to receive data on port " + std::to_string(our_addr.sin_port), false, Color::Yellow);
+			custom_log("listen_for_data: Attempting to receive data on port " + std::to_string(our_addr.sin_port), false, Color::Yellow);
 			if ((size = recvfrom(s_send, buf, BUFLEN, 0, (struct sockaddr*)&other_addr, &other_addr_len)) == SOCKET_ERROR) {
-				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), false, Color::Red);
+				custom_log("listen_for_data: ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), false, Color::Red);
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
 				continue;
 			}
 		} else {
 			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, (struct sockaddr*)&other_addr, &other_addr_len)) == SOCKET_ERROR) {
-				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), false, Color::Red);
+				custom_log("listen_for_data: ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), false, Color::Red);
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
 				continue;
 			}
@@ -256,35 +256,35 @@ void listen_for_data() {
 				auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_number),
 					ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_number));
 				tile = e.first;
-				custom_log("Receiving new tile: " + p_header.string_representation(), false, Color::Yellow);
+				custom_log("listen_for_data: Receiving new tile: " + p_header.string_representation(), false, Color::Yellow);
 			}
 			bool inserted = tile->second.insert(buf, p_header.file_offset, p_header.packet_length, size);
 			if (tile->second.is_complete()) {
-				custom_log("Completed: " + p_header.string_representation(), false, Color::Yellow);
+				custom_log("listen_for_data: Completed: " + p_header.string_representation(), false, Color::Yellow);
 				c->tile_buffer.insert_tile(tile->second, p_header.tile_number);
 				c->recv_tiles.erase(make_pair(p_header.frame_number, p_header.tile_number));
-				custom_log("New buffer size: " + to_string(c->tile_buffer.get_buffer_size(p_header.tile_number)), false, Color::Yellow);
+				custom_log("listen_for_data: New buffer size: " + to_string(c->tile_buffer.get_buffer_size(p_header.tile_number)), false, Color::Yellow);
 			}
 		} else if (p_type.type == 2) {
 			recv_controls.push(ReceivedControl(buf, (uint32_t)size));
 		} else {
-			custom_log("ERROR: unknown packet type " + to_string(p_type.type), false, Color::Red);
+			custom_log("listen_for_data: ERROR: unknown packet type " + to_string(p_type.type), false, Color::Red);
 			guard.unlock();
 			exit(EXIT_FAILURE);
 		}
 		buf = buf_ori;
 		guard.unlock();
 	}
-	custom_log("Stopped listening for incoming data", false, Color::Yellow);
+	custom_log("listen_for_data: Stopped listening for incoming data", false, Color::Yellow);
 }
 
 void start_listening() {
-	custom_log("Starting new listening thread", false, Color::Yellow);
+	custom_log("start_listening: Starting new listening thread", false, Color::Yellow);
 	worker = thread(listen_for_data);
 }
 
 void clean_up() {
-	custom_log("Attempting to clean up", false, Color::Orange);
+	custom_log("clean_up: Attempting to clean up", false, Color::Orange);
 	closesocket(s_recv);
 	closesocket(s_send);
 	if (initialized) {
@@ -297,9 +297,9 @@ void clean_up() {
 		}
 		frame_numbers.clear();
 		initialized = true;
-		custom_log("Cleaned up", false, Color::Orange);
+		custom_log("clean_up: Cleaned up", false, Color::Orange);
 	} else {
-		custom_log("Already cleaned up", false, Color::Orange);
+		custom_log("clean_up: Already cleaned up", false, Color::Orange);
 	}
 }
 
@@ -323,7 +323,7 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 }
 
 int send_tile(void* data, uint32_t size, uint32_t tile_number) {
-	custom_log("CALL: send_tile, tile " + to_string(tile_number) + " with size " + to_string(size), false, Color::Green);
+	custom_log("send_tile: tile " + to_string(tile_number) + " with size " + to_string(size), false, Color::Green);
 	uint32_t buflen_nheader = BUFLEN - sizeof(PacketType) - sizeof(PacketHeader);
 	buflen_nheader = 1148;
 	uint32_t current_offset = 0;
@@ -342,88 +342,89 @@ int send_tile(void* data, uint32_t size, uint32_t tile_number) {
 		struct PacketHeader p_header {
 			client_number, frame_numbers[tile_number], tile_number, size, current_offset, next_size
 		};
-		custom_log("Sending packet: " + p_header.string_representation());
+		custom_log("send_tile: Sending packet: " + p_header.string_representation());
 		memcpy(buf_msg, &p_header, sizeof(p_header));
 		memcpy(buf_msg + sizeof(p_header), reinterpret_cast<char*>(data) + current_offset, next_size);
 		int size_send = send_packet(buf_msg, next_size + sizeof(PacketHeader), 1);
 		if (size_send == SOCKET_ERROR) {
 			guard.unlock();
-			custom_log("ERROR: the return value of send_packet should not be negative!", false, Color::Red);
+			custom_log("send_tile: ERROR: the return value of send_packet should not be negative!", false, Color::Red);
 			return size_send;
 		}
 		full_size_send += size_send;
 		current_offset += next_size;
 		remaining -= next_size;
 	}
-	custom_log("Sent out frame " + to_string(frame_numbers[tile_number]) + ", tile " + to_string(tile_number));
+	custom_log("send_tile: Sent out frame " + to_string(frame_numbers[tile_number]) + ", tile " + to_string(tile_number));
 	frame_numbers[tile_number] += 1;
 	guard.unlock();
-	custom_log("RETURN: send_tile, " + to_string(full_size_send), false, Color::Green);
+	custom_log("send_tile: return " + to_string(full_size_send), false, Color::Green);
 	return full_size_send;
 }
 
 int get_tile_size(uint32_t client_number, uint32_t tile_number) {
-	custom_log("CALL: get_tile_size, " + to_string(client_number) + ", " + to_string(tile_number), false, Color::Yellow);
+	custom_log("get_tile_size: " + to_string(client_number) + ", " + to_string(tile_number), false, Color::Yellow);
 	ClientReceiver* c = find_or_add_receiver(client_number);
 	while (c->tile_buffer.get_buffer_size(tile_number) == 0) {
 		this_thread::sleep_for(chrono::milliseconds(1));
+		if (!keep_working) return 0;
 	}
 	ReceivedTile t = c->tile_buffer.next(tile_number);
 	c->data_parser.set_current_tile(t, tile_number);
 	int tile_size = c->data_parser.get_current_tile_size(tile_number);
-	custom_log("RETURN: get_tile_size, " + to_string(tile_size), false, Color::Yellow);
+	custom_log("get_tile_size: return " + to_string(tile_size), false, Color::Yellow);
 	return tile_size;
 }
 
 void retrieve_tile(void* d, uint32_t size, uint32_t client_number, uint32_t tile_number) {
-	custom_log("CALL: retrieve_tile, " + to_string(client_number) + ", " + to_string(tile_number), false, Color::Yellow);
+	custom_log("retrieve_tile: " + to_string(client_number) + ", " + to_string(tile_number), false, Color::Yellow);
 	ClientReceiver* c = find_or_add_receiver(client_number);
 	int local_size = c->data_parser.fill_data_array(d, size, tile_number);
 	if (local_size >= 0) {
-		custom_log("ERROR: retrieve_tile parameter size " + to_string(size) + " does not match registered data length" + to_string(local_size), false, Color::Red);
+		custom_log("retrieve_tile: ERROR: retrieve_tile parameter size " + to_string(size) + " does not match registered data length" + to_string(local_size), false, Color::Red);
 	}
-	custom_log("RETURN: retrieve_tile");
+	custom_log("retrieve_tile: return");
 }
 
 int send_control(void* data, uint32_t size) {
-	custom_log("CALL: send_control");
+	custom_log("send_control: called");
 	if (size > BUFLEN - sizeof(PacketType)) {
-		custom_log("ERROR: send_control returns -1 since the message size is too large", false, Color::Red);
+		custom_log("send_control: ERROR: send_control returns -1 since the message size is too large", false, Color::Red);
 		return -1;
 	}
 	char* temp_d = reinterpret_cast<char*>(data);
 	int size_send = send_packet(temp_d, size, 2);
-	custom_log("RETURN: send_control, " + to_string(size_send));
+	custom_log("send_control: return " + to_string(size_send));
 	return size_send;
 }
 
 int get_control_size() {
-	custom_log("CALL: next_control");
+	custom_log("get_control_size: called");
 	unique_lock<mutex> guard(m_recv_control);
 	if (recv_controls.empty()) {
 		guard.unlock();
-		custom_log("RETURN: next_frame, -1");
+		custom_log("get_control_size: return -1");
 		return -1;
 	}
 	int size = (int)recv_controls.front().get_data_length();
 	guard.unlock();
-	custom_log("RETURN: next_frame, " + to_string(size));
+	custom_log("get_control_size: return " + to_string(size));
 	return size;
 }
 
 void retrieve_control(void* d, uint32_t size) {
-	custom_log("CALL: retrieve_control");
+	custom_log("retrieve_control: called");
 	unique_lock<mutex> guard(m_recv_control);
 	auto next_control_packet = std::move(recv_controls.front());
 	recv_controls.pop();
 	guard.unlock();
 	uint32_t local_size = (uint32_t)next_control_packet.get_data_length();
 	if (size != local_size) {
-		custom_log("ERROR: retrieve_control parameter size " + to_string(size) + " does not match data length " + to_string(local_size), false, Color::Red);
+		custom_log("retrieve_control: ERROR: retrieve_control parameter size " + to_string(size) + " does not match data length " + to_string(local_size), false, Color::Red);
 		return;
 	}
 	char* p = next_control_packet.get_data();
 	char* temp_d = reinterpret_cast<char*>(d);
 	memcpy(temp_d, p, size);
-	custom_log("RETURN: retrieve_control");
+	custom_log("retrieve_control: return");
 }
