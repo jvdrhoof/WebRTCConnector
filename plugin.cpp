@@ -231,7 +231,7 @@ void listen_for_data() {
 			if (getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len) < 0) {
 
 			}
-			custom_log("listen_for_data: Attempting to receive data on port " + std::to_string(our_addr.sin_port), false, Color::Yellow);
+			custom_log("listen_for_data: Attempting to receive data on port " + std::to_string(our_addr.sin_port));
 			if ((size = recvfrom(s_send, buf, BUFLEN, 0, (struct sockaddr*)&other_addr, &other_addr_len)) == SOCKET_ERROR) {
 				custom_log("listen_for_data: ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), false, Color::Red);
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -287,8 +287,10 @@ void clean_up() {
     custom_log("clean_up: Attempting to clean up", false, Color::Orange);
 	if (initialized) {
 		keep_working = false;
+		unique_lock<mutex> guard(m_send_data);
 		closesocket(s_recv);
 		closesocket(s_send);
+		guard.unlock();
 		if (worker.joinable())
 			worker.join();
 		free(buf);
@@ -331,7 +333,7 @@ int send_tile(void* data, uint32_t size, uint32_t tile_number) {
 	int full_size_send = 0;
 	char* temp_d = reinterpret_cast<char*>(data);
 	unique_lock<mutex> guard(m_send_data);
-	while (remaining > 0) {
+	while (remaining > 0 && keep_working) {
 		uint32_t next_size = 0;
 		if (remaining >= buflen_nheader) {
 			next_size = buflen_nheader;
