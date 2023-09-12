@@ -44,8 +44,8 @@ mutex m_recv_data;
 mutex m_send_data;
 mutex m_recv_control;
 
-static char* buf = (char*)malloc(BUFLEN);
-static char* buf_ori = buf;
+static char* buf;
+static char* buf_ori;
 
 map<uint32_t, ClientReceiver*> client_receivers;
 vector<uint32_t> frame_numbers;
@@ -130,6 +130,8 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	number_of_tiles = n_tiles;
 	custom_log("connect_to_proxy: Number of tiles: " + to_string(number_of_tiles), false, Color::Orange);
 	frame_numbers = vector<uint32_t>(number_of_tiles, 0);
+	buf = (char*)malloc(BUFLEN);
+	buf_ori = buf;
 
 #ifdef WIN32
 	custom_log("connect_to_proxy: Setting up socket to " + string(ip_send), false, Color::Orange);
