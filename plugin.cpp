@@ -285,10 +285,10 @@ void start_listening() {
 
 void clean_up() {
 	custom_log("Attempting to clean up", false, Color::Orange);
-	closesocket(s_recv);
-	closesocket(s_send);
 	if (initialized) {
 		keep_working = false;
+		closesocket(s_recv);
+		closesocket(s_send);
 		if (worker.joinable())
 			worker.join();
 		free(buf);
@@ -296,7 +296,7 @@ void clean_up() {
 			client_receivers.erase(it++);
 		}
 		frame_numbers.clear();
-		initialized = true;
+		initialized = false;
 		custom_log("Cleaned up", false, Color::Orange);
 	} else {
 		custom_log("Already cleaned up", false, Color::Orange);
