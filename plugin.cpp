@@ -44,8 +44,8 @@ mutex m_recv_data;
 mutex m_send_data;
 mutex m_recv_control;
 
-static char* buf;
-static char* buf_ori;
+static char* buf = NULL;
+static char* buf_ori = NULL;
 
 map<uint32_t, ClientReceiver*> client_receivers;
 vector<uint32_t> frame_numbers;
@@ -295,7 +295,10 @@ void clean_up() {
 		guard.unlock();
 		if (worker.joinable())
 			worker.join();
-		free(buf);
+		if (buf != NULL) {
+			free(buf);
+			buf = NULL;
+		}
 		for (auto it = client_receivers.cbegin(); it != client_receivers.cend(); ) {
 			client_receivers.erase(it++);
 		}
