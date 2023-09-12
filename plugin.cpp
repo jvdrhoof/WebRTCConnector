@@ -152,7 +152,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	our_address.sin_family = AF_INET;
 	our_address.sin_port = htons(port_send + 1);
 	our_address.sin_addr.s_addr = htonl(INADDR_ANY);
-	if (bind(s_send, (struct sockaddr*)&our_address, sizeof(our_address)) < 0) {
+	if (::bind(s_send, (struct sockaddr*)&our_address, sizeof(our_address)) < 0) {
 		custom_log("connect_to_proxy: bind: ERROR: " + std::to_string(errno));
 	}
 	if (setsockopt(s_send, SOL_SOCKET, SO_RCVBUF, (char*)&buf_size, sizeof(ULONG)) < 0) {
@@ -169,7 +169,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 #endif
 
 	sockaddr_in our_addr;
-	int our_addr_len = sizeof(our_addr);
+	unsigned int our_addr_len = sizeof(our_addr);
 	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
 	custom_log("sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), false, Color::Orange);
 
@@ -197,6 +197,14 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
         inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.s_addr);
 #endif
 
+<<<<<<< HEAD
+=======
+		sockaddr_in our_addr;
+		unsigned int our_addr_len = sizeof(our_addr);
+		getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
+		custom_log("SHOULD NOT BE EXECUTED: sendto: our port is " + to_string(our_addr.sin_port) + ", their port is " + to_string(si_recv.sin_port), true, Color::Orange);
+
+>>>>>>> af48a664773db55bc6563e33ba20b7ce51fc022a
         if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
 			custom_log("ERROR: failed to send to socket on port " + to_string(port_recv), false, Color::Red);
 			WSACleanup();
@@ -219,8 +227,17 @@ void listen_for_data() {
 
 		sockaddr_in other_addr;
 		memset(&other_addr, 0, sizeof(other_addr));
-		int other_addr_len = sizeof(other_addr);
+		unsigned int other_addr_len = sizeof(other_addr);
 		if (one_socket) {
+<<<<<<< HEAD
+=======
+			sockaddr_in our_addr;
+			unsigned int our_addr_len = sizeof(our_addr);
+			if (getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len) < 0) {
+
+			}
+			custom_log("Attempting to receive data on port " + std::to_string(our_addr.sin_port), false, Color::Yellow);
+>>>>>>> af48a664773db55bc6563e33ba20b7ce51fc022a
 			if ((size = recvfrom(s_send, buf, BUFLEN, 0, (struct sockaddr*)&other_addr, &other_addr_len)) == SOCKET_ERROR) {
 				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), false, Color::Red);
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -298,6 +315,15 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 	char buf_msg[BUFLEN] = { 0 };
 	memcpy(buf_msg, &packet_type, size);
 	memcpy(&buf_msg[sizeof(packet_type)], data, size);
+<<<<<<< HEAD
+=======
+
+	sockaddr_in our_addr;
+	unsigned int our_addr_len = sizeof(our_addr);
+	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
+	custom_log("send_packet: sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), true, Color::Green);
+
+>>>>>>> af48a664773db55bc6563e33ba20b7ce51fc022a
 	if ((size_send = sendto(s_send, buf_msg, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send)) == SOCKET_ERROR) {
 		custom_log("send_packet: ERROR: " + to_string(errno), false, Color::Red);
 		return -1;
