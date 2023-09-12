@@ -122,13 +122,13 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	custom_log("Attempting to connect to sender " + string(ip_send) + ":" + to_string(port_send) +
 		" and receiver " + string(ip_recv) + ":" + to_string(port_recv), false, Color::Orange);
 	if (initialized) {
-		custom_log("Proxy plugin already initialized, no changes are possible", false, Color::Orange);
+		custom_log("DLL already initialized, no changes are possible", false, Color::Orange);
 		return AlreadyInitialized;
 	}
 
 	client_number = client_id;
 	number_of_tiles = n_tiles;
-	custom_log("Number of tiles: " + to_string(number_of_tiles));
+	custom_log("Number of tiles: " + to_string(number_of_tiles), false, Color::Orange);
 	frame_numbers = vector<uint32_t>(number_of_tiles, 0);
 
 #ifdef WIN32
@@ -171,7 +171,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	sockaddr_in our_addr;
 	int our_addr_len = sizeof(our_addr);
 	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
-	custom_log("sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), true, Color::Orange);
+	custom_log("sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), false, Color::Orange);
 
 	if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
 		custom_log("ERROR: failed to send to socket on port " + to_string(port_send), false, Color::Red);
@@ -197,11 +197,6 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
         inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.s_addr);
 #endif
 
-		sockaddr_in our_addr;
-		int our_addr_len = sizeof(our_addr);
-		getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
-		custom_log("SHOULD NOT BE EXECUTED: sendto: our port is " + to_string(our_addr.sin_port) + ", their port is " + to_string(si_recv.sin_port), true, Color::Orange);
-
         if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
 			custom_log("ERROR: failed to send to socket on port " + to_string(port_recv), false, Color::Red);
 			WSACleanup();
@@ -226,12 +221,6 @@ void listen_for_data() {
 		memset(&other_addr, 0, sizeof(other_addr));
 		int other_addr_len = sizeof(other_addr);
 		if (one_socket) {
-			sockaddr_in our_addr;
-			int our_addr_len = sizeof(our_addr);
-			if (getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len) < 0) {
-
-			}
-			custom_log("Attempting to receive data on port " + std::to_string(our_addr.sin_port), false, Color::Yellow);
 			if ((size = recvfrom(s_send, buf, BUFLEN, 0, (struct sockaddr*)&other_addr, &other_addr_len)) == SOCKET_ERROR) {
 				custom_log("ERROR: recvfrom() failed with error code " + std::to_string(WSAGetLastError()), false, Color::Red);
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -245,12 +234,11 @@ void listen_for_data() {
 			}
 		}
 
-		custom_log("listen_for_data: recvfrom: got " + std::to_string(size) + " bytes from port " + std::to_string(other_addr.sin_port), false, Color::Yellow);
+		custom_log("listen_for_data: recvfrom: got " + std::to_string(size) + " bytes from port " + std::to_string(other_addr.sin_port));
 
 		struct PacketType p_type(&buf, size);
 		if (p_type.type == 1) {
 			struct PacketHeader p_header(&buf, size);
-			custom_log("Calling find_or_add_receiver, listen_to_data", false, Color::Yellow);
 			ClientReceiver* c = find_or_add_receiver(p_header.client_number);
 			auto tile = c->recv_tiles.find(make_pair(p_header.frame_number, p_header.tile_number));
 			if (tile == c->recv_tiles.end()) {
@@ -269,7 +257,7 @@ void listen_for_data() {
 		} else if (p_type.type == 2) {
 			recv_controls.push(ReceivedControl(buf, (uint32_t)size));
 		} else {
-			custom_log("ERROR: unknown packet type " + to_string(p_type.type), true, Color::Red);
+			custom_log("ERROR: unknown packet type " + to_string(p_type.type), false, Color::Red);
 			guard.unlock();
 			exit(EXIT_FAILURE);
 		}
@@ -310,20 +298,15 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 	char buf_msg[BUFLEN] = { 0 };
 	memcpy(buf_msg, &packet_type, size);
 	memcpy(&buf_msg[sizeof(packet_type)], data, size);
-
-	sockaddr_in our_addr;
-	int our_addr_len = sizeof(our_addr);
-	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
-	custom_log("send_packet: sendto: our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " + to_string(ntohs(si_send.sin_port)), true, Color::Green);
-
 	if ((size_send = sendto(s_send, buf_msg, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send)) == SOCKET_ERROR) {
+		custom_log("send_packet: ERROR: " + to_string(errno), false, Color::Red);
 		return -1;
 	}
 	return size_send;
 }
 
 int send_tile(void* data, uint32_t size, uint32_t tile_number) {
-	custom_log("CALL: send_tile", false, Color::Green);
+	custom_log("CALL: send_tile, tile " + to_string(tile_number) + " with size " + to_string(size), false, Color::Green);
 	uint32_t buflen_nheader = BUFLEN - sizeof(PacketType) - sizeof(PacketHeader);
 	buflen_nheader = 1148;
 	uint32_t current_offset = 0;
@@ -355,15 +338,15 @@ int send_tile(void* data, uint32_t size, uint32_t tile_number) {
 		current_offset += next_size;
 		remaining -= next_size;
 	}
-	custom_log("Sent out frame " + to_string(frame_numbers[tile_number]) + ", tile " + to_string(tile_number), false, Color::Green);
+	custom_log("Sent out frame " + to_string(frame_numbers[tile_number]) + ", tile " + to_string(tile_number));
 	frame_numbers[tile_number] += 1;
 	guard.unlock();
-	custom_log("RETURN: send_tile, " + to_string(full_size_send));
+	custom_log("RETURN: send_tile, " + to_string(full_size_send), false, Color::Green);
 	return full_size_send;
 }
 
 int get_tile_size(uint32_t client_number, uint32_t tile_number) {
-	custom_log("CALL: get_tile_size, " + to_string(client_number) + ", " + to_string(tile_number), false, Color::Blue);
+	custom_log("CALL: get_tile_size, " + to_string(client_number) + ", " + to_string(tile_number), false, Color::Yellow);
 	ClientReceiver* c = find_or_add_receiver(client_number);
 	while (c->tile_buffer.get_buffer_size(tile_number) == 0) {
 		this_thread::sleep_for(chrono::milliseconds(1));
@@ -371,15 +354,15 @@ int get_tile_size(uint32_t client_number, uint32_t tile_number) {
 	ReceivedTile t = c->tile_buffer.next(tile_number);
 	c->data_parser.set_current_tile(t, tile_number);
 	int tile_size = c->data_parser.get_current_tile_size(tile_number);
-	custom_log("RETURN: get_tile_size, " + to_string(tile_size));
+	custom_log("RETURN: get_tile_size, " + to_string(tile_size), false, Color::Yellow);
 	return tile_size;
 }
 
-void retrieve_tile(void* d, uint32_t size, uint32_t client_id, uint32_t tile_number) {
-	custom_log("CALL: retrieve_tile, " + to_string(client_id) + ", " + to_string(tile_number), false, Color::Blue);
+void retrieve_tile(void* d, uint32_t size, uint32_t client_number, uint32_t tile_number) {
+	custom_log("CALL: retrieve_tile, " + to_string(client_number) + ", " + to_string(tile_number), false, Color::Yellow);
 	ClientReceiver* c = find_or_add_receiver(client_number);
 	int local_size = c->data_parser.fill_data_array(d, size, tile_number);
-	if (local_size > 0) {
+	if (local_size >= 0) {
 		custom_log("ERROR: retrieve_tile parameter size " + to_string(size) + " does not match registered data length" + to_string(local_size), false, Color::Red);
 	}
 	custom_log("RETURN: retrieve_tile");

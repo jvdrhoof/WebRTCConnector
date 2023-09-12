@@ -22,7 +22,7 @@ public:
 		char* p = current_tiles[tile_number].get_data();
 		char* temp_d = reinterpret_cast<char*>(d);
 		memcpy(temp_d, p, local_size);
-		return 0;
+		return -1;
 	}
 
 	void set_current_tile(ReceivedTile& r, uint32_t tile_number) {
