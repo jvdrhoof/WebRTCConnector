@@ -132,6 +132,7 @@ int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t 
 	frame_numbers = vector<uint32_t>(number_of_tiles, 0);
 	buf = (char*)malloc(BUFLEN);
 	buf_ori = buf;
+	keep_working = true;
 
 #ifdef WIN32
 	custom_log("connect_to_proxy: Setting up socket to " + string(ip_send), false, Color::Orange);
