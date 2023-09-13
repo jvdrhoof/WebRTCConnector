@@ -16,13 +16,13 @@ public:
 
 	int fill_data_array(void* d, uint32_t size, uint32_t tile_number) {
 		uint32_t local_size = current_tiles[tile_number].get_tile_length();
-		if (size != local_size) {
+		if (local_size != size) {
 			return local_size;
 		}
 		char* p = current_tiles[tile_number].get_data();
 		char* temp_d = reinterpret_cast<char*>(d);
 		memcpy(temp_d, p, local_size);
-		return -1;
+		return size;
 	}
 
 	void set_current_tile(ReceivedTile& r, uint32_t tile_number) {

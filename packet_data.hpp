@@ -26,9 +26,9 @@ struct PacketType {
 };
 
 struct PacketHeader {
-	uint32_t client_number;
+	uint32_t client_id;
 	uint32_t frame_number;
-	uint32_t tile_number;
+	uint32_t tile_id;
 	uint32_t file_length;
 	uint32_t file_offset;
 	uint32_t packet_length;
@@ -37,11 +37,11 @@ struct PacketHeader {
 		return sizeof(struct PacketHeader);
 	}
 
-	PacketHeader(uint32_t client_number, uint32_t frame_number, uint32_t tile_number,
+	PacketHeader(uint32_t client_id, uint32_t frame_number, uint32_t tile_id,
 		uint32_t file_length, uint32_t file_offset, uint32_t packet_length) {
-		this->client_number = client_number;
+		this->client_id = client_id;
 		this->frame_number = frame_number;
-		this->tile_number = tile_number;
+		this->tile_id = tile_id;
 		this->file_length = file_length;
 		this->file_offset = file_offset;
 		this->packet_length = packet_length;
@@ -58,12 +58,12 @@ struct PacketHeader {
 	}
 
 	std::string string_representation() {
-		return "Client number: " +
-			std::to_string(client_number) +
+		return "Client ID: " +
+			std::to_string(client_id) +
 			", frame number: " +
 			std::to_string(frame_number) +
-			", tile number: " +
-			std::to_string(tile_number) +
+			", tile ID: " +
+			std::to_string(tile_id) +
 			", file length: " +
 			std::to_string(file_length) +
 			", file offset: " +
