@@ -6,7 +6,7 @@ UNAME=$(shell uname)
 ifeq ($(UNAME), Darwin)
 OUTPUT=libWebRTCConnector.dylib
 CC=clang++
-CFLAGS=--std=c++14 -arch x86_64 -arch arm64
+CFLAGS=-g -O0 --std=c++14 -arch x86_64 -arch arm64
 LDFLAGS=-dynamiclib
 endif
 ifeq ($(UNAME), Linux)
