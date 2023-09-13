@@ -55,7 +55,7 @@ static string log_file = "";
 static int log_level = 0;
 mutex m_logging;
 
-string api_version = "037f19";
+string api_version = "1.0";
 
 enum CONNECTION_SETUP_CODE : int {
 	ConnectionSuccess = 0,
