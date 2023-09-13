@@ -9,7 +9,7 @@
 // All exported functions should be declared here
 extern "C"
 {
-	DLLExport void set_logging(char* _log_directory, bool _debug_mode);
+	DLLExport void set_logging(char* log_directory, int _log_level);
 	DLLExport int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t n_tiles,
 		uint32_t client_id);
 	DLLExport void listen_for_data();
