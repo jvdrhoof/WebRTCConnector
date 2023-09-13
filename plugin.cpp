@@ -567,9 +567,9 @@ int send_control(void* data, uint32_t size) {
 		return -1;
 	}
 	char* temp_d = reinterpret_cast<char*>(data);
-	int size_send = send_packet(temp_d, size, 2);
-	custom_log("send_control: return " + to_string(size_send));
-	return size_send;
+	int size_sent = send_packet(temp_d, size, 2);
+	custom_log("send_control: return " + to_string(size_sent));
+	return size_sent;
 }
 
 int get_control_size() {

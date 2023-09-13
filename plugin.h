@@ -10,9 +10,8 @@
 extern "C"
 {
 	DLLExport void set_logging(char* _log_directory, bool _debug_mode);
-	DLLExport int connect_to_proxy(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t number_of_tiles, uint32_t client_id);
+	DLLExport int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t number_of_tiles, uint32_t client_id);
 	DLLExport void listen_for_data();
-	DLLExport void start_listening();
 	DLLExport void clean_up();
 	DLLExport int send_tile(void* data, uint32_t size, uint32_t tile_number);
 	DLLExport int get_tile_size(uint32_t client_id, uint32_t tile_number);
