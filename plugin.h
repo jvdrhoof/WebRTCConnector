@@ -11,7 +11,7 @@ extern "C"
 {
 	DLLExport void set_logging(char* log_directory, int _log_level);
 	DLLExport int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t n_tiles,
-		uint32_t client_id);
+		uint32_t client_id, char* api_version);
 	DLLExport void listen_for_data();
 	DLLExport void clean_up();
 	DLLExport int send_tile(void* data, uint32_t size, uint32_t tile_id);

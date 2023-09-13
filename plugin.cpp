@@ -55,13 +55,15 @@ static string log_file = "";
 static int log_level = 0;
 mutex m_logging;
 
+string api_version = "037f19";
 
 enum CONNECTION_SETUP_CODE : int {
 	ConnectionSuccess = 0,
 	StartUpError = 1,
 	SocketCreationError = 2,
 	SendToError = 3,
-	AlreadyInitialized = 4
+	AlreadyInitialized = 4,
+	WrongAPIVersion = 5
 };
 
 enum LOG_LEVEL : int {
@@ -145,7 +147,13 @@ ClientReceiver* find_or_add_receiver(uint32_t client_id) {
 	specifiying the required IP addresses and ports, the number of tiles that will be transmitted, and the client ID.
 */
 int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t _n_tiles,
-	uint32_t _client_id) {
+	uint32_t _client_id, char* api_version) {
+
+	if (string(api_version) != api_version) {
+		custom_log("intialize: ERROR: An incorrect API version is used!");
+		return WrongAPIVersion;
+	}
+
 	custom_log("initialize: Attempting to connect to sender " + string(ip_send) + ":" + to_string(port_send) +
 		" and receiver " + string(ip_recv) + ":" + to_string(port_recv) + ", using n_tiles " + to_string(_n_tiles) +
 		" and client_id " + to_string(_client_id), Verbose, Color::Orange);
@@ -445,7 +453,7 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 
 	if (!initialized) {
 		custom_log("send_tile: ERROR: The DLL has not yet been initialized!", Default, Color::Red);
-		return;
+		return -1;
 	}
 
 	// Required parameters
