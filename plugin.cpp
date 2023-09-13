@@ -377,6 +377,7 @@ void clean_up() {
 		unique_lock<mutex> guard(m_send_data);
 		closesocket(s_recv);
 		closesocket(s_send);
+		frame_numbers.clear();
 		guard.unlock();
 
 		// Join the listening thread
@@ -393,9 +394,6 @@ void clean_up() {
 		for (auto it = client_receivers.cbegin(); it != client_receivers.cend(); ) {
 			client_receivers.erase(it++);
 		}
-
-		// Clear frame numbers for all tiles
-		frame_numbers.clear();
 
 		// Reset the initialized flag
 		initialized = false;
