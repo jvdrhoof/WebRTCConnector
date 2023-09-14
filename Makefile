@@ -18,3 +18,7 @@ endif
 
 $(OUTPUT): $(SRC) $(INC)
 	$(CC) $(LDFLAGS) $(CFLAGS) $(SRC) -o $(OUTPUT)
+	
+install: $(OUTPUT)
+	cp $(OUTPUT) ../VR2Gather/Assets/Plugins/mac/libWebRTCConnector.dylib
+	
