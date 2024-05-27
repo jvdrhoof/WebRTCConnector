@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "buffer.hpp"
+#include "audio_buffer.hpp"
 #include "client_receiver.hpp"
 #include "data_parser.hpp"
 #include "framework.h"
@@ -47,8 +48,11 @@ mutex m_recv_control;
 static char* buf = NULL;
 static char* buf_ori = NULL;
 
+
 map<uint32_t, ClientReceiver*> client_receivers;
+
 vector<uint32_t> frame_numbers;
+uint32_t audio_frame_number;
 queue<ReceivedControl> recv_controls;
 
 static string log_file = "";
@@ -82,11 +86,12 @@ inline string get_current_date_time(bool date_only) {
 #if defined(_WIN64) || defined(_WIN32)
 	localtime_s(&tstruct, &now);
 #else
-	localtime_r( &now, &tstruct);
+	localtime_r(&now, &tstruct);
 #endif
 	if (date_only) {
 		strftime(buf, sizeof(buf), "%Y-%m-%d", &tstruct);
-	} else {
+	}
+	else {
 		strftime(buf, sizeof(buf), "%Y-%m-%d %X", &tstruct);
 	}
 	return string(buf);
@@ -124,23 +129,36 @@ void set_logging(char* log_directory, int _log_level) {
 	This function enables the retrieval and (if needed) the creation of a client receiver. One receivere is required
 	per WebRTC connection, so that frames and tiles corresponding to this peer can be stored appropriately.
 */
-ClientReceiver* find_or_add_receiver(uint32_t client_id) {
-	ClientReceiver* c;
+ClientReceiver* find_or_add_receiver(uint32_t client_id, bool is_audio = false) {
 	unique_lock<mutex> guard(m_receivers);
-	auto it = client_receivers.find(client_id);
-	if (it == client_receivers.end()) {
-		custom_log("find_or_add_receiver: Client ID " + to_string(client_id) + " not yet registered, inserting now",
-			Verbose, Color::Orange);
-		c = new ClientReceiver(client_id, n_tiles);
-		client_receivers.insert({ client_id, c });
-		custom_log("find_or_add_receiver: Client ID " + to_string(client_id) +
-			" registered. Make sure you are receiving the correct client ID!", Verbose, Color::Orange);
-	} else {
-		c = it->second;
-	}
+	ClientReceiver* c = nullptr;
+	
+		auto it = client_receivers.find(client_id);
+		if (it == client_receivers.end()) {
+			
+			custom_log("find_or_add_receiver: Client ID " + to_string(is_audio) + to_string(client_id) + " not yet registered, inserting now",
+				Default, Color::Orange);
+			//Sleep(5000);
+			c = new ClientReceiver(client_id, n_tiles);
+			//if (!is_audio) {
+			//Sleep(5000);
+			// We need to do it like this because else bad stuff happens when we use both audio + video
+			auto itt = client_receivers.insert({ client_id, c });
+			c = itt.first->second;
+			custom_log("find_or_add_receiver: Client ID " + to_string(client_id) +
+				" registered. Make sure you are receiving the correct client ID!", Verbose, Color::Orange);
+			//	Sleep(5000);
+		}
+		else {
+			c = it->second;
+		}
+	
+	
+	
+	
 	guard.unlock();
 	return c;
-}                                                                                                                       
+}
 
 /*
 	This function is responsible for initializing the DLL. It should be called once per session from within Unity,
@@ -171,6 +189,9 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 	buf = (char*)malloc(BUFLEN);
 	buf_ori = buf;
 	keep_working = true;
+	
+	client_receivers = map<uint32_t, ClientReceiver*>();
+	client_receivers.clear();
 
 #ifdef WIN32
 	custom_log("initialize: Setting up socket to " + string(ip_send), Verbose, Color::Orange);
@@ -181,7 +202,7 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 
 	// Generic parameters
 	ULONG buf_size = 524288000;
-	char t[BUFLEN] = {0};
+	char t[BUFLEN] = { 0 };
 	t[0] = (char)n_tiles;
 
 	// Create send socket
@@ -207,9 +228,9 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 	si_send.sin_family = AF_INET;
 	si_send.sin_port = htons(port_send);
 #ifdef WIN32
-    inet_pton(AF_INET, ip_send, &si_send.sin_addr.S_un.S_addr);
+	inet_pton(AF_INET, ip_send, &si_send.sin_addr.S_un.S_addr);
 #else
-    inet_pton(AF_INET, ip_send, &si_send.sin_addr.s_addr);
+	inet_pton(AF_INET, ip_send, &si_send.sin_addr.s_addr);
 #endif
 
 	// TODO: remove this?
@@ -249,9 +270,9 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 		si_recv.sin_family = AF_INET;
 		si_recv.sin_port = htons(port_recv);
 #ifdef WIN32
-        inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.S_un.S_addr);
+		inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.S_un.S_addr);
 #else
-        inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.s_addr);
+		inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.s_addr);
 #endif
 
 		// TODO: remove this?
@@ -262,7 +283,7 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 			to_string(si_recv.sin_port), Verbose, Color::Orange);
 
 		// Send a message to the Golang peer, containing the number of tiles (<10 for now)
-        if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
+		if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
 			custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Color::Red);
 			WSACleanup();
 			return SendToError;
@@ -285,7 +306,7 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 */
 void listen_for_data() {
 	custom_log("listen_for_data: Starting to listen for incoming data", Verbose, Color::Yellow);
-	
+
 	// Enable the listening thread to join
 	while (keep_working) {
 
@@ -302,7 +323,8 @@ void listen_for_data() {
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
 				continue;
 			}
-		} else {
+		}
+		else {
 			// Receive from the additional socket
 			if ((size = recvfrom(s_recv, buf, BUFLEN, 0, NULL, NULL)) == SOCKET_ERROR) {
 				custom_log("listen_for_data: recvfrom: ERROR: " + std::to_string(WSAGetLastError()), Default,
@@ -319,9 +341,10 @@ void listen_for_data() {
 		/*
 			Distinguish between different packet types:
 				1: point cloud frame
-				2: control message
+				2: audio frame
+				3: control message
 		*/
-		if (p_type.type == 1) {
+		if (p_type.type == PacketType::TilePacket) {
 
 			// Extract the packet header
 			struct PacketHeader p_header(&buf, size);
@@ -353,13 +376,51 @@ void listen_for_data() {
 				custom_log("listen_for_data: New buffer size: " +
 					to_string(c->tile_buffer.get_buffer_size(p_header.tile_id)), Debug, Color::Yellow);
 			}
+		}
+		else if (p_type.type == PacketType::AudioPacket) {
+			// Extract the packet header
+			struct AudioPacketHeader p_header(&buf, size);
+			
+			
+			//custom_log("listen_for_data: New audio: " + std::to_string(AudioPacketHeader::size()) + " " + std::to_string(size), Default);
+			
+			// Get the receiver belonging to the connected peer
+			ClientReceiver* c = find_or_add_receiver(p_header.client_id);
 
-		} else if (p_type.type == 2) {
+		// Retrieve tile iterator, creating a new instance if needed
+			auto audio_frame = c->recv_audio.find(p_header.frame_number);
+			if (audio_frame == c->recv_audio.end()) {
+				auto e = c->recv_audio.emplace(p_header.frame_number,
+					ReceivedAudio(p_header.file_length, p_header.frame_number));
+				audio_frame = e.first;
+				if(p_header.frame_number % 100 == 0)
+				custom_log("listen_for_data: New audio: " + std::to_string(p_header.file_offset) + " " + std::to_string(p_header.packet_length) + std::to_string(p_header.file_length), Default);
+			}
+			
+			
+			// Insert the new data
+			bool inserted = audio_frame->second.insert(buf, p_header.file_offset, p_header.packet_length, size);
+			if (!inserted) {
+				//custom_log("listen_for_data: Failed to insert: " + p_header.string_representation(), Default,
+				//	Color::Red);
+			}
+			// Check if all data corresponding to the frame has arrived
+			if (audio_frame->second.is_complete()) {
+				//custom_log("listen_for_data: Completed: " + p_header.string_representation(), Verbose, Color::Yellow);
+				c->audio_buffer.insert_audio_frame(audio_frame->second);
+				c->recv_audio.erase(p_header.frame_number);
+			//	custom_log("listen_for_data: New buffer size: " +
+			//		to_string(c->audio_buffer.get_buffer_size()), Verbose, Color::Yellow);
+				custom_log("listen_for_data: done", Default);
+			}
+		}
+		else if (p_type.type == PacketType::ControlPacket) {
 
 			// Push the message
 			recv_controls.push(ReceivedControl(buf, (uint32_t)size));
 
-		} else {
+		}
+		else {
 			custom_log("listen_for_data: ERROR: unknown packet type " + to_string(p_type.type), Default, Color::Red);
 			guard.unlock();
 			exit(EXIT_FAILURE);
@@ -381,7 +442,7 @@ void listen_for_data() {
 	within Unity.
 */
 void clean_up() {
-    custom_log("clean_up: Attempting to clean up", Verbose, Color::Orange);
+	custom_log("clean_up: Attempting to clean up", Verbose, Color::Orange);
 
 	// Check if the DLL has already been initialized
 	if (initialized) {
@@ -415,7 +476,8 @@ void clean_up() {
 		initialized = false;
 
 		custom_log("clean_up: Cleaned up", Verbose, Color::Orange);
-	} else {
+	}
+	else {
 
 		// No action is required
 		custom_log("clean_up: Already cleaned up", Verbose, Color::Orange);
@@ -431,8 +493,8 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 	int size_sent = 0;
 
 	// Insert all data into a buffer
-	char buf_msg[BUFLEN] = {0};
-	memcpy(buf_msg, &packet_type, size);
+	char buf_msg[BUFLEN] = { 0 };
+	memcpy(buf_msg, &packet_type, sizeof(packet_type));
 	memcpy(&buf_msg[sizeof(packet_type)], data, size);
 
 	// Send the message to the Golang peer
@@ -458,7 +520,7 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 
 	// Required parameters
 	uint32_t buflen_nheader = BUFLEN - sizeof(PacketType) - sizeof(PacketHeader);
-	buflen_nheader = 1148;
+	buflen_nheader = 1148; // TODO check this, pretty sure this can be bigger
 	uint32_t current_offset = 0;
 	uint32_t remaining = size;
 	int full_size_sent = 0;
@@ -474,13 +536,14 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 		uint32_t next_size = 0;
 		if (remaining >= buflen_nheader) {
 			next_size = buflen_nheader;
-		} else {
+		}
+		else {
 			next_size = remaining;
 		}
-		
+
 		// Create a new packet header
 		struct PacketHeader p_header {
-			client_id, frame_numbers[tile_id], tile_id, size, current_offset, next_size
+			client_id, frame_numbers[tile_id], size, current_offset, next_size, tile_id
 		};
 
 		// Insert all data into a buffer
@@ -489,7 +552,7 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 		memcpy(buf_msg + sizeof(p_header), reinterpret_cast<char*>(data) + current_offset, next_size);
 
 		// Send out the packet
-		int size_sent = send_packet(buf_msg, next_size + sizeof(PacketHeader), 1);
+		int size_sent = send_packet(buf_msg, next_size + sizeof(PacketHeader), PacketType::TilePacket);
 		if (size_sent < 0) {
 			guard.unlock();
 			custom_log("send_tile: ERROR: the return value of send_packet should not be negative!", Default,
@@ -547,6 +610,7 @@ int get_tile_size(uint32_t client_id, uint32_t tile_id) {
 	return tile_size;
 }
 
+
 /*
 	This function allows to retrieve the next frame corresponding to a tile in memory. The function should be called
 	from within the Unity reader once get_tile_size has returned the tile size and the required memory has been
@@ -562,16 +626,147 @@ void retrieve_tile(void* d, uint32_t size, uint32_t client_id, uint32_t tile_id)
 	int local_size = c->data_parser.fill_data_array(d, size, tile_id);
 	if (local_size == 0) {
 		custom_log("retrieve_tile: ERROR: the tile could not be retrieved", Default, Color::Red);
-	} else if (local_size != size) {
+	}
+	else if (local_size != size) {
 		custom_log("retrieve_tile: ERROR: retrieve_tile parameter size " + to_string(size) +
 			" does not match the registered data length" + to_string(local_size), Default, Color::Red);
-	} else {
+	}
+	else {
 		custom_log("retrieve_tile: Tile " + to_string(tile_id) + " from client " + to_string(client_id) +
 			" successfully retrieved", Debug, Color::Yellow);
 	}
 }
 
-/* 
+/*
+	This function allows to send out an audio frame to the Golang peer. It returns the amount of bytes sent.
+*/
+int send_audio(void* data, uint32_t size) {
+	custom_log("send_audio: Size " + to_string(size), Debug, Color::Green);
+
+	if (!initialized) {
+		custom_log("send_tile: ERROR: The DLL has not yet been initialized!", Default, Color::Red);
+		return -1;
+	}
+
+	// Required parameters
+	uint32_t buflen_nheader = BUFLEN - sizeof(PacketType) - sizeof(PacketHeader);
+	buflen_nheader = 1152; // TODO check this, pretty sure this can be bigger
+	uint32_t current_offset = 0;
+	uint32_t remaining = size;
+	int full_size_sent = 0;
+	char* temp_d = reinterpret_cast<char*>(data);
+
+	// Make sure only one process is sending out packets
+	unique_lock<mutex> guard(m_send_data);
+
+	// Send out packets as long as needed
+	while (remaining > 0 && keep_working) {
+
+		// Determine the amount of bytes to send out
+		uint32_t next_size = 0;
+		if (remaining >= buflen_nheader) {
+			next_size = buflen_nheader;
+		}
+		else {
+			next_size = remaining;
+		}
+
+		// Create a new packet header
+		struct AudioPacketHeader p_header {
+			client_id, audio_frame_number, size, current_offset, next_size
+		};
+
+		// Insert all data into a buffer
+		char buf_msg[BUFLEN];
+		memcpy(buf_msg, &p_header, sizeof(p_header));
+		memcpy(buf_msg + sizeof(p_header), reinterpret_cast<char*>(data) + current_offset, next_size);
+
+		// Send out the packet
+		int size_sent = send_packet(buf_msg, next_size + sizeof(AudioPacketHeader), PacketType::AudioPacket);
+		if (size_sent < 0) {
+			guard.unlock();
+			custom_log("send_tile: ERROR: the return value of send_packet should not be negative!", Default,
+				Color::Red);
+			return -1;
+		}
+
+		// Update parameters
+		full_size_sent += size_sent;
+		current_offset += next_size;
+		remaining -= next_size;
+	}
+
+	custom_log("send_audio: Sent out audio frame " + to_string(audio_frame_number) + ", using " + to_string(full_size_sent) + " bytes", Debug, Color::Green);
+
+	// Increase frame number by one
+	audio_frame_number += 1;
+
+	// Release the mutex
+	guard.unlock();
+
+	// Return the amount of bytes sent
+	return full_size_sent;
+}
+
+/*
+	This function returns the size of the next audio frame corresponding. The function should be called from
+	within the Unity reader every time a new audio frame is desired. The resulting return value should be used to allocate the
+	required memory and call the retrieve_audio function.
+*/
+int get_audio_size(uint32_t client_id) {
+	custom_log("get_audio_size: " + to_string(client_id), Default, Color::Yellow);
+	
+	// Get the receiver belonging to the connected peer
+	ClientReceiver* c = find_or_add_receiver(client_id, true);
+	
+	// Wait until a new frame is available
+	while (c->audio_buffer.get_buffer_size() == 0) {
+		this_thread::sleep_for(chrono::milliseconds(1)); // TODO: remove all of this pull logic and replace it with callbacks
+		if (!keep_working) {
+			return 0;
+		}
+	}
+	
+	// Retrieve the next frame and forward it to the data parser
+	ReceivedAudio t = c->audio_buffer.next();
+	c->data_parser.set_current_audio(t);
+
+	// Retrieve the tile size
+	int audio_size = c->data_parser.get_current_audio_size();
+	custom_log("get_audio_size: return " + to_string(audio_size), Debug, Color::Yellow);
+
+	// Return the tile size
+	return audio_size;
+}
+
+
+/*
+	This function allows to retrieve the next audio frame from memory. The function should be called
+	from within the Unity reader once get_audio_size has returned the audio size and the required memory has been
+	allocated.
+*/
+void retrieve_audio(void* d, uint32_t size, uint32_t client_id) {
+	custom_log("retrieve_audio: " + to_string(client_id), Debug, Color::Yellow);
+
+	// Get the receiver belonging to the connected peer
+	ClientReceiver* c = find_or_add_receiver(client_id);
+
+	// Fill the allocated memory with the requested data, if possible
+	int local_size = c->data_parser.fill_data_array(d, size);
+	if (local_size == 0) {
+		custom_log("retrieve_audio: ERROR: the audio could not be retrieved", Default, Color::Red);
+	}
+	else if (local_size != size) {
+		custom_log("retrieve_audio: ERROR: retrieve_audio parameter size " + to_string(size) +
+			" does not match the registered data length" + to_string(local_size), Default, Color::Red);
+	}
+	else {
+		custom_log("retrieve_audio: Audio frame from client " + to_string(client_id) +
+			" successfully retrieved", Debug, Color::Yellow);
+	}
+}
+
+/*
 	The functions below can be used to send and retrieve control messages, yet this feature is currently not supported
 	by the Golang peers and the SFU.
 */

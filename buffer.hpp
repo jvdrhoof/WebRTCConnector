@@ -21,6 +21,10 @@ public:
 		std::unique_lock<std::mutex> guard(m);
 		ReceivedTile next_tile = tile_queues[tile_number].top();
 		tile_queues[tile_number].pop();
+		while (!tile_queues[tile_number].empty()) {
+			next_tile = tile_queues[tile_number].top();
+			tile_queues[tile_number].pop();
+		}
 		frame_numbers[tile_number] = next_tile.get_frame_number();
 		guard.unlock();
 		return std::move(next_tile);

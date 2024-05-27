@@ -155,12 +155,14 @@
     <None Include="cpp.hint" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="audio_buffer.hpp" />
     <ClInclude Include="data_parser.hpp" />
     <ClInclude Include="log.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="plugin.h" />
     <ClInclude Include="packet_data.hpp" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="received_audio.hpp" />
     <ClInclude Include="received_control.hpp" />
     <ClInclude Include="received_tile.hpp" />
     <ClInclude Include="buffer.hpp" />

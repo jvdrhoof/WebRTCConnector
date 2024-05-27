@@ -18,8 +18,10 @@ public:
 	}
 
 	std::map<std::pair<uint32_t, uint32_t>, ReceivedTile> recv_tiles;
+	std::map<uint32_t, ReceivedAudio> recv_audio;
 	DataParser data_parser;
 	Buffer tile_buffer;
+	AudioBuffer audio_buffer;
 
 private:
 	uint32_t client_number;
