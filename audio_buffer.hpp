@@ -18,7 +18,7 @@ public:
 		
 		ReceivedAudio next_audio_frame = audio_queue.top();
 		audio_queue.pop();
-		while (!audio_queue.empty()) {
+		while (audio_queue.size() > 100) {
 			next_audio_frame = audio_queue.top();
 			audio_queue.pop();
 		}

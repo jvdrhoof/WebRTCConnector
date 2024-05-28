@@ -16,7 +16,6 @@
 #include <string>
 #include <thread>
 
-
 // Maximum length of buffer
 #define BUFLEN 1300
 
@@ -394,7 +393,7 @@ void listen_for_data() {
 					ReceivedAudio(p_header.file_length, p_header.frame_number));
 				audio_frame = e.first;
 				if(p_header.frame_number % 100 == 0)
-				custom_log("listen_for_data: New audio: " + std::to_string(p_header.file_offset) + " " + std::to_string(p_header.packet_length) + std::to_string(p_header.file_length), Default);
+				custom_log("listen_for_data: New audio: " + std::to_string(p_header.file_offset) + " " + std::to_string(p_header.packet_length) + std::to_string(p_header.file_length), Debug);
 			}
 			
 			
@@ -411,7 +410,7 @@ void listen_for_data() {
 				c->recv_audio.erase(p_header.frame_number);
 			//	custom_log("listen_for_data: New buffer size: " +
 			//		to_string(c->audio_buffer.get_buffer_size()), Verbose, Color::Yellow);
-				custom_log("listen_for_data: done", Default);
+			//	custom_log("listen_for_data: done", Default);
 			}
 		}
 		else if (p_type.type == PacketType::ControlPacket) {
@@ -717,16 +716,18 @@ int get_audio_size(uint32_t client_id) {
 	custom_log("get_audio_size: " + to_string(client_id), Default, Color::Yellow);
 	
 	// Get the receiver belonging to the connected peer
-	ClientReceiver* c = find_or_add_receiver(client_id, true);
+	ClientReceiver* c = find_or_add_receiver(client_id);
 	
 	// Wait until a new frame is available
+	//timeBeginPeriod(1);
 	while (c->audio_buffer.get_buffer_size() == 0) {
 		this_thread::sleep_for(chrono::milliseconds(1)); // TODO: remove all of this pull logic and replace it with callbacks
+		c = find_or_add_receiver(client_id);
 		if (!keep_working) {
 			return 0;
 		}
 	}
-	
+	//timeEndPeriod(1);
 	// Retrieve the next frame and forward it to the data parser
 	ReceivedAudio t = c->audio_buffer.next();
 	c->data_parser.set_current_audio(t);
