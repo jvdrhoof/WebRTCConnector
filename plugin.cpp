@@ -10,10 +10,12 @@
 #include "received_control.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
+#include <sys/stat.h>
 #include <thread>
 
 // Maximum length of buffer
@@ -118,8 +120,19 @@ void custom_log(string message, int _log_level = 0, Color color = Color::Black) 
 	should be used. It should be called once per session from within Unity.
 */
 void set_logging(char* log_directory, int _log_level) {
-	log_file = string(log_directory) + "\\" + get_current_date_time(true) + ".txt";
-	Log::log("set_logging: Log directory set to " + string(log_directory), Color::Orange);
+	struct stat sb;
+	if (log_directory == NULL)
+	{
+		Log::log("ERROR: set_logging: Log directory is NULL, so logs will not be written to file", Color::Red);
+		return;
+	} else if (stat(log_directory, &sb) != 0)
+	{
+		Log::log("ERROR: set_logging: Log directory " + string(log_directory) + " does not exist!", Color::Red);
+		return;
+	}
+	std::filesystem::path log_file = log_directory;
+	log_file /= get_current_date_time(true) + ".txt";
+	Log::log("set_logging: Logs will be written to " + log_file.string(), Color::Orange);
 	log_level = _log_level;
 	Log::log("set_logging: Log level set to " + to_string(log_level), Color::Orange);
 }
