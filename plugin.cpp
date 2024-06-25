@@ -128,6 +128,8 @@ void custom_log(string message, int _debug_level = 0, int console_level = 0, Col
 	should be used. It should be called once per session from within Unity.
 */
 void set_logging(char* log_directory, int _debug_level) {
+	debug_level = _debug_level;
+	Log::log("set_logging: Debug level set to " + to_string(debug_level), Log, Color::Orange);
 	if (log_directory == NULL) {
 		Log::log("set_logging: Log directory is NULL, so logs will not be written to file", Log, Color::Orange);
 		return;
@@ -145,8 +147,6 @@ void set_logging(char* log_directory, int _debug_level) {
 	log_file_path /= get_current_date_time(true) + ".txt";
 	log_file = log_file_path.string();
 	Log::log("set_logging: Logs will be written to " + log_file, Log, Color::Orange);
-	debug_level = _debug_level;
-	Log::log("set_logging: Debug level set to " + to_string(debug_level), Log, Color::Orange);
 }
 
 /*
