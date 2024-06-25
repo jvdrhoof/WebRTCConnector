@@ -26,6 +26,7 @@ struct PacketType {
 	}
 
 	enum Type {
+		PeerReadyPacket = 0,
 		TilePacket = 1,
 		AudioPacket = 2,
 		ControlPacket = 3

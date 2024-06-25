@@ -40,6 +40,7 @@ uint32_t n_tiles;
 static thread worker;
 static bool keep_working = true;
 static bool initialized = false;
+static bool peer_ready = false;
 
 mutex m_receivers;
 mutex m_recv_data;
@@ -140,9 +141,10 @@ void set_logging(char* log_directory, int _debug_level) {
 		Log::log("set_logging: Log directory " + string(log_directory) + " does not exist!", Log, Color::Red);
 		return;
 	}
-	std::filesystem::path log_file = log_directory;
-	log_file /= get_current_date_time(true) + ".txt";
-	Log::log("set_logging: Logs will be written to " + log_file.string(), Log, Color::Orange);
+	std::filesystem::path log_file_path = log_directory;
+	log_file_path /= get_current_date_time(true) + ".txt";
+	log_file = log_file_path.string();
+	Log::log("set_logging: Logs will be written to " + log_file, Log, Color::Orange);
 	debug_level = _debug_level;
 	Log::log("set_logging: Debug level set to " + to_string(debug_level), Log, Color::Orange);
 }
@@ -254,12 +256,12 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 		to_string(ntohs(si_send.sin_port)), Verbose, Log, Color::Orange);
 
 	// Send a message to the Golang peer, containing the number of tiles (<10 for now)
-	if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
+	/*if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
 		custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Log, Color::Red);
 		custom_log("No data can be retrieved through WebRTC, so no content consumption is possible", Default, Error, Color::Red);
 		WSACleanup();
 		return SendToError;
-	}
+	}*/
 
 	// In case a separate port is used to receive incoming data
 	if (string(ip_send) != string(ip_recv) || port_send != port_recv) {
@@ -299,12 +301,12 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 
 		// Send a message to the Golang peer, containing the number of tiles (<10 for now)
 		// TODO: adopt a tile-agnostic approach
-		if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
+		/*if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
 			custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Log, Color::Red);
 			custom_log("No data can be retrieved through WebRTC, so no content consumption is possible", Default, Error, Color::Red);
 			WSACleanup();
 			return SendToError;
-		}
+		}*/
 	}
 
 	// Start a separate thread to listen to incoming data
@@ -357,89 +359,107 @@ void listen_for_data() {
 
 		/*
 			Distinguish between different packet types:
+			    0: peer is ready to receive / send data
 				1: point cloud frame
 				2: audio frame
 				3: control message
 		*/
-		if (p_type.type == PacketType::TilePacket) {
-
-			// Extract the packet header
-			struct PacketHeader p_header(&buf, size);
-
-			// Get the receiver belonging to the connected peer
-			ClientReceiver* c = find_or_add_receiver(p_header.client_id);
-
-			// Retrieve tile iterator, creating a new instance if needed
-			auto tile = c->recv_tiles.find(make_pair(p_header.frame_number, p_header.tile_id));
-			if (tile == c->recv_tiles.end()) {
-				auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_id),
-					ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id));
-				tile = e.first;
-				custom_log("listen_for_data: New tile frame arrived: " + p_header.string_representation(), Debug, Log, Color::Yellow);
-			}
-
-			// Insert the new data
-			bool inserted = tile->second.insert(buf, p_header.file_offset, p_header.packet_length, size);
-			if (!inserted) {
-				custom_log("listen_for_data: Failed to insert the received tile frame in the buffer: " + p_header.string_representation(), Default,
-					Log, Color::Red);
-			}
-
-			// Check if all data corresponding to the frame has arrived
-			if (tile->second.is_complete()) {
-				custom_log("listen_for_data: Completed the reception of tile frame: " + p_header.string_representation(), Debug, Log, Color::Yellow);
-				c->tile_buffer.insert_tile(tile->second, p_header.tile_id);
-				c->recv_tiles.erase(make_pair(p_header.frame_number, p_header.tile_id));
-				custom_log("listen_for_data: The new tile buffer size equals: " +
-					to_string(c->tile_buffer.get_buffer_size(p_header.tile_id)), Debug, Log, Color::Yellow);
-			}
-		}
-		else if (p_type.type == PacketType::AudioPacket) {
-			// Extract the packet header
-			struct AudioPacketHeader p_header(&buf, size);
-			
-			// Get the receiver belonging to the connected peer
-			ClientReceiver* c = find_or_add_receiver(p_header.client_id);
-
-			// Retrieve audio iterator, creating a new instance if needed
-			auto audio_frame = c->recv_audio.find(p_header.frame_number);
-			if (audio_frame == c->recv_audio.end()) {
-				auto e = c->recv_audio.emplace(p_header.frame_number,
-					ReceivedAudio(p_header.file_length, p_header.frame_number));
-				audio_frame = e.first;
-				if (p_header.frame_number % 100 == 0) {
-					custom_log("listen_for_data: New audi packet arrived: " + std::to_string(p_header.file_offset) + " " +
-						std::to_string(p_header.packet_length) + std::to_string(p_header.file_length),
-						Debug, Log, Color::Yellow);
+		switch (p_type.type) {
+			case(PacketType::PeerReadyPacket): {
+				// Peer is now ready to receive data
+				peer_ready = true;
+				char t[BUFLEN] = { 0 };
+				t[0] = (char)n_tiles;
+				custom_log("listen_for_data: connected to peer", Default, Log, Color::Orange);
+				if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
+					custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Log, Color::Red);
+					WSACleanup();
+					return;
 				}
-			}
-			
-			// Insert the new data
-			bool inserted = audio_frame->second.insert(buf, p_header.file_offset, p_header.packet_length, size);
-			if (!inserted) {
-				custom_log("listen_for_data: Failed to insert the received audio packet in the buffer: " + p_header.string_representation(), Default,
-					Log, Color::Red);
-			}
-			// Check if all data corresponding to the frame has arrived
-			if (audio_frame->second.is_complete()) {
-				custom_log("listen_for_data: Completed the reception of audio packet: " + p_header.string_representation(), Debug, Log, Color::Yellow);
-				c->audio_buffer.insert_audio_frame(audio_frame->second);
-				c->recv_audio.erase(p_header.frame_number);
-				custom_log("listen_for_data: The new audio buffer size equals: " +
-					to_string(c->audio_buffer.get_buffer_size()), Debug, Log, Color::Yellow);
-			}
-		}
-		else if (p_type.type == PacketType::ControlPacket) {
-			custom_log("listen_for_data: Received a control packet, pushing...", Debug, Log, Color::Red);
+				break;
+			};
+			case(PacketType::TilePacket): {
+				// Extract the packet header
+				struct PacketHeader p_header(&buf, size);
 
-			// Push the message
-			recv_controls.push(ReceivedControl(buf, (uint32_t)size));
-		}
-		else {
-			custom_log("listen_for_data: ERROR: unknown packet type " + to_string(p_type.type), Default, Log, Color::Red);
-			custom_log("Data can no longer be retrieved through WebRTC, so no content consumption is possible", Default, Error, Color::Red);
-			guard.unlock();
-			exit(EXIT_FAILURE);
+				// Get the receiver belonging to the connected peer
+				ClientReceiver* c = find_or_add_receiver(p_header.client_id);
+
+				// Retrieve tile iterator, creating a new instance if needed
+				auto tile = c->recv_tiles.find(make_pair(p_header.frame_number, p_header.tile_id));
+				if (tile == c->recv_tiles.end()) {
+					auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_id),
+						ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id));
+					tile = e.first;
+					custom_log("listen_for_data: New tile frame arrived: " + p_header.string_representation(), Debug, Log, Color::Yellow);
+				}
+
+				// Insert the new data
+				bool inserted = tile->second.insert(buf, p_header.file_offset, p_header.packet_length, size);
+				if (!inserted) {
+					custom_log("listen_for_data: Failed to insert the received tile frame in the buffer: " + p_header.string_representation(), Default,
+						Log, Color::Red);
+				}
+
+				// Check if all data corresponding to the frame has arrived
+				if (tile->second.is_complete()) {
+					custom_log("listen_for_data: Completed the reception of tile frame: " + p_header.string_representation(), Debug, Log, Color::Yellow);
+					c->tile_buffer.insert_tile(tile->second, p_header.tile_id);
+					c->recv_tiles.erase(make_pair(p_header.frame_number, p_header.tile_id));
+					custom_log("listen_for_data: The new tile buffer size equals: " +
+						to_string(c->tile_buffer.get_buffer_size(p_header.tile_id)), Debug, Log, Color::Yellow);
+				}
+				break;
+			};
+			case(PacketType::AudioPacket): {
+				// Extract the packet header
+				struct AudioPacketHeader p_header(&buf, size);
+
+				// Get the receiver belonging to the connected peer
+				ClientReceiver* c = find_or_add_receiver(p_header.client_id);
+
+				// Retrieve audio iterator, creating a new instance if needed
+				auto audio_frame = c->recv_audio.find(p_header.frame_number);
+				if (audio_frame == c->recv_audio.end()) {
+					auto e = c->recv_audio.emplace(p_header.frame_number,
+						ReceivedAudio(p_header.file_length, p_header.frame_number));
+					audio_frame = e.first;
+					if (p_header.frame_number % 100 == 0) {
+						custom_log("listen_for_data: New audi packet arrived: " + std::to_string(p_header.file_offset) + " " +
+							std::to_string(p_header.packet_length) + std::to_string(p_header.file_length),
+							Debug, Log, Color::Yellow);
+					}
+				}
+
+				// Insert the new data
+				bool inserted = audio_frame->second.insert(buf, p_header.file_offset, p_header.packet_length, size);
+				if (!inserted) {
+					custom_log("listen_for_data: Failed to insert the received audio packet in the buffer: " + p_header.string_representation(), Default,
+						Log, Color::Red);
+				}
+				// Check if all data corresponding to the frame has arrived
+				if (audio_frame->second.is_complete()) {
+					custom_log("listen_for_data: Completed the reception of audio packet: " + p_header.string_representation(), Debug, Log, Color::Yellow);
+					c->audio_buffer.insert_audio_frame(audio_frame->second);
+					c->recv_audio.erase(p_header.frame_number);
+					custom_log("listen_for_data: The new audio buffer size equals: " +
+						to_string(c->audio_buffer.get_buffer_size()), Debug, Log, Color::Yellow);
+				}
+				break;
+			};
+			case(PacketType::ControlPacket): {
+				custom_log("listen_for_data: Received a control packet, pushing...", Debug, Log, Color::Red);
+
+				// Push the message
+				recv_controls.push(ReceivedControl(buf, (uint32_t)size));
+				break;
+			};
+			default: {
+				custom_log("listen_for_data: ERROR: unknown packet type " + to_string(p_type.type), Default, Log, Color::Red);
+				custom_log("Data can no longer be retrieved through WebRTC, so no content consumption is possible", Default, Error, Color::Red);
+				guard.unlock();
+				exit(EXIT_FAILURE);
+			};
 		}
 
 		// Reset the buffer pointer
@@ -490,7 +510,7 @@ void clean_up() {
 
 		// Reset the initialized flag
 		initialized = false;
-
+		peer_ready = false;
 		custom_log("clean_up: Cleaned up", Verbose, Log, Color::Orange);
 	}
 	else {
@@ -527,6 +547,8 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 	This function allows to send out a frame of a tile to the Golang peer. It returns the amount of bytes sent.
 */
 int send_tile(void* data, uint32_t size, uint32_t tile_id) {
+	if (!peer_ready)
+		return -1;
 	custom_log("send_tile: Sending out tile " + to_string(tile_id) + " with size " + to_string(size), Debug, Log, Color::Green);
 
 	if (!initialized) {
@@ -657,6 +679,8 @@ void retrieve_tile(void* d, uint32_t size, uint32_t client_id, uint32_t tile_id)
 	This function allows to send out an audio frame to the Golang peer. It returns the amount of bytes sent.
 */
 int send_audio(void* data, uint32_t size) {
+	if (!peer_ready)
+		return -1;
 	custom_log("send_audio: Sending out audio packet with size " + to_string(size), Debug, Log, Color::Green);
 
 	if (!initialized)
@@ -790,6 +814,8 @@ void retrieve_audio(void* d, uint32_t size, uint32_t client_id) {
 */
 
 int send_control(void* data, uint32_t size) {
+	if (!peer_ready)
+		return -1;
 	if (size > BUFLEN - sizeof(PacketType)) {
 		custom_log("send_control: ERROR: The message size is too large, so -1 is returned", Default,
 			Log, Color::Red);
