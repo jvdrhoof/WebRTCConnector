@@ -11,10 +11,8 @@
 class ClientReceiver {
 
 public:
-	ClientReceiver(uint32_t client_number, uint32_t n_tiles) {
+	ClientReceiver(uint32_t client_number) {
 		this->client_number = client_number;
-		tile_buffer.set_number_of_tiles(n_tiles);
-		data_parser.set_number_of_tiles(n_tiles);
 	}
 
 	std::map<std::pair<uint32_t, uint32_t>, ReceivedTile> recv_tiles;

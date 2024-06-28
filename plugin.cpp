@@ -35,7 +35,6 @@ static SOCKET s_recv;
 int slen_recv = sizeof(si_recv);
 
 uint32_t client_id;
-uint32_t n_tiles;
 
 static thread worker;
 static bool keep_working = true;
@@ -160,7 +159,7 @@ ClientReceiver* find_or_add_receiver(uint32_t client_id, bool is_audio = false) 
 	if (it == client_receivers.end()) {
 		custom_log("find_or_add_receiver: Client ID " + to_string(client_id) + " not yet registered. Registering now...",
 			Verbose, Log, Color::Orange);
-		c = new ClientReceiver(client_id, n_tiles);
+		c = new ClientReceiver(client_id);
 		// We need to do it like this because else bad stuff happens when we use both audio + video
 		auto itt = client_receivers.insert({ client_id, c });
 		c = itt.first->second;
@@ -178,7 +177,7 @@ ClientReceiver* find_or_add_receiver(uint32_t client_id, bool is_audio = false) 
 	This function is responsible for initializing the DLL. It should be called once per session from within Unity,
 	specifiying the required IP addresses and ports, the number of tiles that will be transmitted, and the client ID.
 */
-int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t _n_tiles,
+int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_recv, uint32_t n_tiles,
 	uint32_t _client_id, char* api_version) {
 
 	if (string(api_version) != api_version) {
@@ -187,7 +186,7 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 	}
 
 	custom_log("initialize: Attempting to connect to sender " + string(ip_send) + ":" + to_string(port_send) +
-		" and receiver " + string(ip_recv) + ":" + to_string(port_recv) + ", using n_tiles " + to_string(_n_tiles) +
+		" and receiver " + string(ip_recv) + ":" + to_string(port_recv) + ", using n_tiles " + to_string(n_tiles) +
 		" and client_id " + to_string(_client_id), Verbose, Log, Color::Orange);
 
 	// Check if the DLL has already been initialized
@@ -198,7 +197,6 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 
 	// Initialize parameters
 	client_id = _client_id;
-	n_tiles = _n_tiles;
 	frame_numbers = vector<uint32_t>(n_tiles, 0);
 	buf = (char*)malloc(BUFLEN);
 	buf_ori = buf;
@@ -216,8 +214,6 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 
 	// Generic parameters
 	ULONG buf_size = 524288000;
-	char t[BUFLEN] = { 0 };
-	t[0] = (char)n_tiles;
 
 	// Create send socket
 	if ((s_send = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == SOCKET_ERROR) {
@@ -248,20 +244,11 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 	inet_pton(AF_INET, ip_send, &si_send.sin_addr.s_addr);
 #endif
 
-	// TODO: remove this?
 	sockaddr_in our_addr;
 	socklen_t our_addr_len = sizeof(our_addr);
 	getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
 	custom_log("initialize: getsockname: Our port is " + to_string(ntohs(our_addr.sin_port)) + ", their port is " +
 		to_string(ntohs(si_send.sin_port)), Verbose, Log, Color::Orange);
-
-	// Send a message to the Golang peer, containing the number of tiles (<10 for now)
-	/*if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
-		custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Log, Color::Red);
-		custom_log("No data can be retrieved through WebRTC, so no content consumption is possible", Default, Error, Color::Red);
-		WSACleanup();
-		return SendToError;
-	}*/
 
 	// In case a separate port is used to receive incoming data
 	if (string(ip_send) != string(ip_recv) || port_send != port_recv) {
@@ -292,21 +279,11 @@ int initialize(char* ip_send, uint32_t port_send, char* ip_recv, uint32_t port_r
 		inet_pton(AF_INET, ip_recv, &si_recv.sin_addr.s_addr);
 #endif
 
-		// TODO: remove this?
 		sockaddr_in our_addr;
 		socklen_t our_addr_len = sizeof(our_addr);
 		getsockname(s_send, (sockaddr*)&our_addr, &our_addr_len);
 		custom_log("initialize: getsockname: Our port is " + to_string(our_addr.sin_port) + ", their port is " +
 			to_string(si_recv.sin_port), Verbose, Log, Color::Orange);
-
-		// Send a message to the Golang peer, containing the number of tiles (<10 for now)
-		// TODO: adopt a tile-agnostic approach
-		/*if (sendto(s_recv, t, BUFLEN, 0, (struct sockaddr*)&si_recv, slen_recv) == SOCKET_ERROR) {
-			custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Log, Color::Red);
-			custom_log("No data can be retrieved through WebRTC, so no content consumption is possible", Default, Error, Color::Red);
-			WSACleanup();
-			return SendToError;
-		}*/
 	}
 
 	// Start a separate thread to listen to incoming data
@@ -369,7 +346,7 @@ void listen_for_data() {
 				// Peer is now ready to receive data
 				peer_ready = true;
 				char t[BUFLEN] = { 0 };
-				t[0] = (char)n_tiles;
+				t[0] = (char)0;
 				custom_log("listen_for_data: connected to peer", Default, Log, Color::Orange);
 				if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
 					custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Log, Color::Red);
@@ -547,8 +524,10 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 	This function allows to send out a frame of a tile to the Golang peer. It returns the amount of bytes sent.
 */
 int send_tile(void* data, uint32_t size, uint32_t tile_id) {
-	if (!peer_ready)
+	if (!peer_ready) {
+		custom_log("send_tile: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
 		return -1;
+	}
 	custom_log("send_tile: Sending out tile " + to_string(tile_id) + " with size " + to_string(size), Debug, Log, Color::Green);
 
 	if (!initialized) {
@@ -679,12 +658,13 @@ void retrieve_tile(void* d, uint32_t size, uint32_t client_id, uint32_t tile_id)
 	This function allows to send out an audio frame to the Golang peer. It returns the amount of bytes sent.
 */
 int send_audio(void* data, uint32_t size) {
-	if (!peer_ready)
+	if (!peer_ready) {
+		custom_log("send_audio: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
 		return -1;
+	}
 	custom_log("send_audio: Sending out audio packet with size " + to_string(size), Debug, Log, Color::Green);
 
-	if (!initialized)
-	{
+	if (!initialized) {
 		custom_log("send_audio: ERROR: The DLL has not yet been initialized!", Default, Log, Color::Red);
 		return -1;
 	}
@@ -755,7 +735,7 @@ int send_audio(void* data, uint32_t size) {
 	required memory and call the retrieve_audio function.
 */
 int get_audio_size(uint32_t client_id) {
-	custom_log("get_audio_size: Determining audio packet size for client " + to_string(client_id), Default, Log, Color::Yellow);
+	custom_log("get_audio_size: Determining audio packet size for client " + to_string(client_id), Debug, Log, Color::Yellow);
 	
 	// Get the receiver belonging to the connected peer
 	ClientReceiver* c = find_or_add_receiver(client_id);
@@ -814,8 +794,10 @@ void retrieve_audio(void* d, uint32_t size, uint32_t client_id) {
 */
 
 int send_control(void* data, uint32_t size) {
-	if (!peer_ready)
+	if (!peer_ready) {
+		custom_log("send_control: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
 		return -1;
+	}
 	if (size > BUFLEN - sizeof(PacketType)) {
 		custom_log("send_control: ERROR: The message size is too large, so -1 is returned", Default,
 			Log, Color::Red);

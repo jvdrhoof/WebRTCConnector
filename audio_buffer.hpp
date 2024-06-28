@@ -6,9 +6,7 @@
 class AudioBuffer {
 
 public:
-	AudioBuffer() {}
-
-	void set_number_of_tiles(uint32_t number_of_tiles) {
+	AudioBuffer() {
 		frame_number = 0;
 	}
 

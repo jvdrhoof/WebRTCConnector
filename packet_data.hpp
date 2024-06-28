@@ -67,7 +67,7 @@ struct PacketHeader {
 	}
 
 	std::string string_representation() {
-		return "¨[VIDEO] Client ID: " +
+		return "[VIDEO] Client ID: " +
 			std::to_string(client_id) +
 			", frame number: " +
 			std::to_string(frame_number) +
