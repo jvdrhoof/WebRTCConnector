@@ -20,7 +20,5 @@ extern "C"
 	DLLExport int send_audio(void* data, uint32_t size);
 	DLLExport int get_audio_size(uint32_t client_id);
 	DLLExport void retrieve_audio(void* buff, uint32_t size, uint32_t client_id);
-	DLLExport int send_control(void* data, uint32_t size);
-	DLLExport int get_control_size();
-	DLLExport void retrieve_control(void* buff, uint32_t size);
+	DLLExport int send_control_packet(void* data, uint32_t size);
 }

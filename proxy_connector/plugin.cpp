@@ -524,11 +524,12 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 	This function allows to send out a frame of a tile to the Golang peer. It returns the amount of bytes sent.
 */
 int send_tile(void* data, uint32_t size, uint32_t tile_id) {
+	custom_log("send_tile: Trying to send out tile " + to_string(tile_id) + " with size " + to_string(size), Debug, Log, Color::Green);
+
 	if (!peer_ready) {
 		custom_log("send_tile: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
 		return -1;
 	}
-	custom_log("send_tile: Sending out tile " + to_string(tile_id) + " with size " + to_string(size), Debug, Log, Color::Green);
 
 	if (!initialized) {
 		custom_log("send_tile: ERROR: The DLL has not yet been initialized!", Default, Log, Color::Red);
@@ -658,11 +659,12 @@ void retrieve_tile(void* d, uint32_t size, uint32_t client_id, uint32_t tile_id)
 	This function allows to send out an audio frame to the Golang peer. It returns the amount of bytes sent.
 */
 int send_audio(void* data, uint32_t size) {
+	custom_log("send_audio: Trying to send out audio packet with size " + to_string(size), Debug, Log, Color::Green);
+
 	if (!peer_ready) {
 		custom_log("send_audio: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
 		return -1;
 	}
-	custom_log("send_audio: Sending out audio packet with size " + to_string(size), Debug, Log, Color::Green);
 
 	if (!initialized) {
 		custom_log("send_audio: ERROR: The DLL has not yet been initialized!", Default, Log, Color::Red);
@@ -793,44 +795,49 @@ void retrieve_audio(void* d, uint32_t size, uint32_t client_id) {
 	by the Golang peers and the SFU.
 */
 
-int send_control(void* data, uint32_t size) {
-	if (!peer_ready) {
-		custom_log("send_control: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
-		return -1;
-	}
+/*
+	This function allows to send out an audio frame to the Golang peer. It returns the amount of bytes sent.
+*/
+int send_control_packet(void* data, uint32_t size) {
+	custom_log("send_control_packet: Trying to send out control packet with size " + to_string(size), Debug, Log, Color::Green);
+
 	if (size > BUFLEN - sizeof(PacketType)) {
-		custom_log("send_control: ERROR: The message size is too large, so -1 is returned", Default,
-			Log, Color::Red);
+		custom_log("send_control_packet: ERROR: The message size " + to_string(size) + " is larger than " + to_string(BUFLEN - sizeof(PacketType)) + ", so the control packet cannot be processed", Default, Log, Color::Red);
 		return -1;
 	}
+
+	if (!peer_ready) {
+		custom_log("send_control_packet: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
+		return -1;
+	}
+
+	if (!initialized) {
+		custom_log("send_control_packet: ERROR: The DLL has not yet been initialized!", Default, Log, Color::Red);
+		return -1;
+	}
+
+	// Required parameters
 	char* temp_d = reinterpret_cast<char*>(data);
-	int size_sent = send_packet(temp_d, size, 2);
-	return size_sent;
-}
 
-int get_control_size() {
-	unique_lock<mutex> guard(m_recv_control);
-	if (recv_controls.empty()) {
+	// Make sure only one process is sending out packets
+	unique_lock<mutex> guard(m_send_data);
+
+	// Insert all data into a buffer
+	char buf_msg[BUFLEN];
+	memcpy(buf_msg, reinterpret_cast<char*>(data), size);
+
+	// Send out the packet
+	int size_sent = send_packet(buf_msg, size, PacketType::ControlPacket);
+	if (size_sent < 0) {
 		guard.unlock();
+		custom_log("send_control_packet: ERROR: The return value of send_packet should not be negative!", Default, Log, Color::Red);
 		return -1;
 	}
-	int size = (int)recv_controls.front().get_data_length();
-	guard.unlock();
-	return size;
-}
 
-void retrieve_control(void* d, uint32_t size) {
-	unique_lock<mutex> guard(m_recv_control);
-	auto next_control_packet = std::move(recv_controls.front());
-	recv_controls.pop();
+	custom_log("send_control_packet: Sent out control frame  " + to_string(size_sent) + " bytes", Debug, Log, Color::Green);
+	// Release the mutex
 	guard.unlock();
-	uint32_t local_size = (uint32_t)next_control_packet.get_data_length();
-	if (size != local_size) {
-		custom_log("retrieve_control: ERROR: retrieve_control parameter size " + to_string(size) +
-			" does not match data length " + to_string(local_size), Default, Log, Color::Red);
-		return;
-	}
-	char* p = next_control_packet.get_data();
-	char* temp_d = reinterpret_cast<char*>(d);
-	memcpy(temp_d, p, size);
+
+	// Return the amount of bytes sent
+	return size_sent;
 }
