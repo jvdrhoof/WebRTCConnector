@@ -1,4 +1,4 @@
 .vs
-x64
+.vscode/
 build/
 installed/
