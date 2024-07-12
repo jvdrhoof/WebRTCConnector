@@ -366,9 +366,17 @@ void listen_for_data() {
 				auto tile = c->recv_tiles.find(make_pair(p_header.frame_number, p_header.tile_id));
 				if (tile == c->recv_tiles.end()) {
 					auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_id),
-						ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id));
+						ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id, p_header.quality));
 					tile = e.first;
 					custom_log("listen_for_data: New tile frame arrived: " + p_header.string_representation(), Debug, Log, Color::Yellow);
+				}
+				else if (tile->second.get_quality() != p_header.quality) {
+					custom_log("listen_for_data: A packet arrived with a different quality than expected: " + p_header.string_representation(), Debug, Log, Color::Yellow);
+					custom_log("listen_for_data: Previous packets belonging to quality " + std::to_string(tile->second.get_quality()) + " will be erased", Debug, Log, Color::Yellow);
+					c->recv_tiles.erase(tile);
+					auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_id),
+						ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id, p_header.quality));
+					tile = e.first;
 				}
 
 				// Insert the new data
@@ -523,7 +531,7 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 /*
 	This function allows to send out a frame of a tile to the Golang peer. It returns the amount of bytes sent.
 */
-int send_tile(void* data, uint32_t size, uint32_t tile_id) {
+int send_tile(void* data, uint32_t size, uint32_t tile_id, uint32_t quality = 0) {
 	custom_log("send_tile: Trying to send out tile " + to_string(tile_id) + " with size " + to_string(size), Debug, Log, Color::Green);
 
 	if (!peer_ready) {
@@ -561,7 +569,7 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 
 		// Create a new packet header
 		struct PacketHeader p_header {
-			client_id, frame_numbers[tile_id], size, current_offset, next_size, tile_id
+			client_id, frame_numbers[tile_id], size, current_offset, next_size, tile_id, quality
 		};
 
 		// Insert all data into a buffer
