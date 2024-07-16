@@ -10,7 +10,6 @@ public:
 		frame_number = 0;
 	}
 
-
 	ReceivedAudio next() {
 		std::unique_lock<std::mutex> guard(m);
 		
@@ -33,7 +32,6 @@ public:
 			return false;
 		}
 		audio_queue.push(std::move(audio_frame));
-		// frame_numbers[tile_number] = frame_number;
 		guard.unlock();
 		return true;
 	}
