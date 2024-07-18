@@ -1,2 +1,0 @@
-#define L4SPROXYPLUGIN_API __declspec(dllexport)
-#define L4SPROXYPLUGIN_API __declspec(dllimport)
