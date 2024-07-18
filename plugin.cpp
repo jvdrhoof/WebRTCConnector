@@ -617,12 +617,16 @@ int get_tile_size(uint32_t client_id, uint32_t tile_id) {
 	ClientReceiver* c = find_or_add_receiver(client_id);
 
 	// Wait until a new frame is available
-	while (c->tile_buffer.get_buffer_size(tile_id) == 0) {
+	auto tile_status = c->tile_buffer.wait_for_tile(tile_id);
+	if (!tile_status) {
+		return 0;
+	}
+	/*while (c->tile_buffer.get_buffer_size(tile_id) == 0) {
 		this_thread::sleep_for(chrono::milliseconds(1));
 		if (!keep_working) {
 			return 0;
 		}
-	}
+	}*/
 
 	// Retrieve the next frame and forward it to the data parser
 	ReceivedTile t = c->tile_buffer.next(tile_id);
@@ -752,13 +756,17 @@ int get_audio_size(uint32_t client_id) {
 	
 	// Wait until a new frame is available
 	//timeBeginPeriod(1);
-	while (c->audio_buffer.get_buffer_size() == 0) {
+	bool audio_ready = c->audio_buffer.wait_for_audio();
+	if (!audio_ready) {
+		return 0;
+	}
+	/*while (c->audio_buffer.get_buffer_size() == 0) {
 		this_thread::sleep_for(chrono::milliseconds(1)); // TODO: remove all of this pull logic and replace it with callbacks
 		c = find_or_add_receiver(client_id);
 		if (!keep_working) {
 			return 0;
 		}
-	}
+	}*/
 	//timeEndPeriod(1);
 	// Retrieve the next frame and forward it to the data parser
 	ReceivedAudio t = c->audio_buffer.next();

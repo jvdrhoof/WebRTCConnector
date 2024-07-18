@@ -169,6 +169,7 @@
     <ClInclude Include="received_tile.hpp" />
     <ClInclude Include="buffer.hpp" />
     <ClInclude Include="client_receiver.hpp" />
+    <ClInclude Include="tile_queue.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="log.cpp" />

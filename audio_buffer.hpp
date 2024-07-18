@@ -1,6 +1,7 @@
 #pragma once
 
 #include "received_audio.hpp"
+#include <condition_variable>
 #include <list>
 
 class AudioBuffer {
@@ -9,7 +10,9 @@ public:
 	AudioBuffer() {
 		frame_number = 0;
 	}
-
+	~AudioBuffer() {
+		cv.notify_all();
+	}
 
 	ReceivedAudio next() {
 		std::unique_lock<std::mutex> guard(m);
@@ -33,8 +36,10 @@ public:
 			return false;
 		}
 		audio_queue.push(std::move(audio_frame));
-		// frame_numbers[tile_number] = frame_number;
 		guard.unlock();
+		cv.notify_one();
+		// frame_numbers[tile_number] = frame_number;
+		
 		return true;
 	}
 
@@ -42,12 +47,26 @@ public:
 		return audio_queue.size();
 	}
 
-	std::priority_queue<ReceivedAudio> get_queue() {
+	std::priority_queue<ReceivedAudio>& get_queue() {
 		return audio_queue;
+	}
+
+	bool wait_for_audio() {
+		std::unique_lock<std::mutex> guard(m);
+
+		cv.wait(guard, [this] { return stop_waiting || audio_queue.size() > 0; });
+		guard.unlock();
+		if (stop_waiting) {
+			return false;
+		}
+		return true;
 	}
 
 private:
 	std::priority_queue<ReceivedAudio> audio_queue;
+	std::condition_variable cv;
 	uint32_t frame_number;
 	std::mutex m;
+
+	bool stop_waiting = false;
 };
