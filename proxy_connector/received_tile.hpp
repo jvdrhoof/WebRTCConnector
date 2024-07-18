@@ -12,10 +12,11 @@ class ReceivedTile {
 public:
 	ReceivedTile() {}
 
-	ReceivedTile(uint32_t _tile_length, uint32_t _frame_number, uint32_t _tile_number) {
+	ReceivedTile(uint32_t _tile_length, uint32_t _frame_number, uint32_t _tile_number, uint32_t _quality) {
 		tile_length = _tile_length; 
 		frame_number = _frame_number;
 		tile_number = _tile_number;
+		quality = _quality;
 		current_size = 0;
 		data.resize(tile_length);
 	}
@@ -41,6 +42,11 @@ public:
 
 	uint32_t get_tile_number() const {
 		return tile_number;
+	}
+
+	uint32_t get_quality() const
+	{
+		return quality;
 	}
 
 	uint32_t get_tile_length() {
@@ -69,7 +75,7 @@ public:
 
 	std::string print() {
 		return "TL = " + std::to_string(tile_length) + ", FN = " + std::to_string(frame_number) + ", TN = " +
-			std::to_string(tile_number) + ", CS = " + std::to_string(current_size) + ", DS = " + 
+			std::to_string(tile_number) + " Q = " + std::to_string(quality) + ", CS = " + std::to_string(current_size) + ", DS = " +
 			std::to_string(data.size());
 	}
 
@@ -77,6 +83,7 @@ private:
 	uint32_t tile_length = 0;
 	uint32_t frame_number = 0;
 	uint32_t tile_number = 0;
+	uint32_t quality = 0;
 	uint32_t current_size = 0;
 	std::vector<char> data;
 	uint8_t temp = 0;

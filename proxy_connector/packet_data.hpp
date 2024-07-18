@@ -2,8 +2,10 @@
 
 #include <stdio.h>
 #include <iostream>
-// Never try something fancy like adding virtual methods or inheritence to these structs as it adds an hidden field to the struct
+
+// Never try something fancy like adding virtual methods or inheritence to these structs as it adds n hidden field to the struct
 // making byte copying unreliable
+
 struct PacketType {
 	uint32_t type;
 
@@ -40,6 +42,7 @@ struct PacketHeader {
 	uint32_t file_offset;
 	uint32_t packet_length;
 	uint32_t tile_id;
+	uint32_t quality;
 
 
 	static constexpr auto size() {
@@ -47,13 +50,14 @@ struct PacketHeader {
 	}
 
 	PacketHeader(uint32_t client_id, uint32_t frame_number,
-		uint32_t file_length, uint32_t file_offset, uint32_t packet_length, uint32_t tile_id) {
+		uint32_t file_length, uint32_t file_offset, uint32_t packet_length, uint32_t tile_id, uint32_t quality) {
 		this->client_id = client_id;
 		this->frame_number = frame_number;
 		this->file_length = file_length;
 		this->file_offset = file_offset;
 		this->packet_length = packet_length;
 		this->tile_id = tile_id;
+		this->quality = quality;
 	}
 
 	PacketHeader(char** buf, size_t& avail) {
@@ -76,10 +80,12 @@ struct PacketHeader {
 			", file offset: " +
 			std::to_string(file_offset) +
 			", packet length: " +
-			std::to_string(packet_length);
+			std::to_string(packet_length) +
+			", tile ID: " +
+			std::to_string(tile_id) +
+			", quality: " +
+			std::to_string(quality);
 	}
-protected:
-	PacketHeader() {};
 };
 
 struct AudioPacketHeader {
@@ -125,6 +131,4 @@ struct AudioPacketHeader {
 			", packet length: " +
 			std::to_string(packet_length);
 	}
-protected:
-	AudioPacketHeader() {};
 };

@@ -347,7 +347,7 @@ void listen_for_data() {
 				peer_ready = true;
 				char t[BUFLEN] = { 0 };
 				t[0] = (char)0;
-				custom_log("listen_for_data: connected to peer", Default, Log, Color::Orange);
+				custom_log("listen_for_data: Connected to Go peer", Verbose, Log, Color::Orange);
 				if (sendto(s_send, t, BUFLEN, 0, (struct sockaddr*)&si_send, slen_send) == SOCKET_ERROR) {
 					custom_log("initialize: sendto: ERROR: " + std::to_string(WSAGetLastError()), Default, Log, Color::Red);
 					WSACleanup();
@@ -366,9 +366,18 @@ void listen_for_data() {
 				auto tile = c->recv_tiles.find(make_pair(p_header.frame_number, p_header.tile_id));
 				if (tile == c->recv_tiles.end()) {
 					auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_id),
-						ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id));
+						ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id, p_header.quality));
 					tile = e.first;
 					custom_log("listen_for_data: New tile frame arrived: " + p_header.string_representation(), Debug, Log, Color::Yellow);
+				}
+				else if (tile->second.get_quality() != p_header.quality) {
+					custom_log("listen_for_data: A packet arrived with a different quality than expected: " + p_header.string_representation(), Debug, Log, Color::Yellow);
+					custom_log("listen_for_data: Previous packets belonging to quality " + std::to_string(tile->second.get_quality()) + " will be erased", Debug, Log, Color::Yellow);
+					custom_log("listen_for_data: Changing quality for tile " + to_string(p_header.tile_id) + " from " + to_string(tile->second.get_quality()) + " to " + to_string(p_header.quality), Verbose, Log, Color::Yellow);
+					c->recv_tiles.erase(tile);
+					auto e = c->recv_tiles.emplace(make_pair(p_header.frame_number, p_header.tile_id),
+						ReceivedTile(p_header.file_length, p_header.frame_number, p_header.tile_id, p_header.quality));
+					tile = e.first;
 				}
 
 				// Insert the new data
@@ -402,7 +411,7 @@ void listen_for_data() {
 						ReceivedAudio(p_header.file_length, p_header.frame_number));
 					audio_frame = e.first;
 					if (p_header.frame_number % 100 == 0) {
-						custom_log("listen_for_data: New audi packet arrived: " + std::to_string(p_header.file_offset) + " " +
+						custom_log("listen_for_data: New audio packet arrived: " + std::to_string(p_header.file_offset) + " " +
 							std::to_string(p_header.packet_length) + std::to_string(p_header.file_length),
 							Debug, Log, Color::Yellow);
 					}
@@ -523,8 +532,8 @@ int send_packet(char* data, uint32_t size, uint32_t _packet_type) {
 /*
 	This function allows to send out a frame of a tile to the Golang peer. It returns the amount of bytes sent.
 */
-int send_tile(void* data, uint32_t size, uint32_t tile_id) {
-	custom_log("send_tile: Trying to send out tile " + to_string(tile_id) + " with size " + to_string(size), Debug, Log, Color::Green);
+int send_tile(void* data, uint32_t size, uint32_t tile_id, uint32_t quality) {
+	custom_log("send_tile: Trying to send out tile " + to_string(tile_id) + " at quality " + to_string(quality) + " with size " + to_string(size), Debug, Log, Color::Green);
 
 	if (!peer_ready) {
 		custom_log("send_tile: The Golang peer is not yet ready, so no data can be sent at the moment", Verbose, Log, Color::Red);
@@ -538,7 +547,8 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 
 	// Required parameters
 	uint32_t buflen_nheader = BUFLEN - sizeof(PacketType) - sizeof(PacketHeader);
-	buflen_nheader = 1148; // TODO check this, pretty sure this can be bigger
+	// TODO: Calculate values using constants
+	buflen_nheader = 1144;
 	uint32_t current_offset = 0;
 	uint32_t remaining = size;
 	int full_size_sent = 0;
@@ -561,12 +571,13 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 
 		// Create a new packet header
 		struct PacketHeader p_header {
-			client_id, frame_numbers[tile_id], size, current_offset, next_size, tile_id
+			client_id, frame_numbers[tile_id], size, current_offset, next_size, tile_id, quality
 		};
 
 		// Insert all data into a buffer
 		char buf_msg[BUFLEN];
 		memcpy(buf_msg, &p_header, sizeof(p_header));
+
 		memcpy(buf_msg + sizeof(p_header), reinterpret_cast<char*>(data) + current_offset, next_size);
 
 		// Send out the packet
@@ -585,7 +596,7 @@ int send_tile(void* data, uint32_t size, uint32_t tile_id) {
 	}
 
 	custom_log("send_tile: Sent out frame " + to_string(frame_numbers[tile_id]) + " of tile " +
-		to_string(tile_id) + ", using " + to_string(full_size_sent) + " bytes", Debug, Log, Color::Green);
+		to_string(tile_id) + " at quality " + to_string(quality) + ", using " + to_string(full_size_sent) + " bytes", Debug, Log, Color::Green);
 
 	// Increase frame number by one
 	frame_numbers[tile_id] += 1;
@@ -609,12 +620,16 @@ int get_tile_size(uint32_t client_id, uint32_t tile_id) {
 	ClientReceiver* c = find_or_add_receiver(client_id);
 
 	// Wait until a new frame is available
-	while (c->tile_buffer.get_buffer_size(tile_id) == 0) {
+	auto tile_status = c->tile_buffer.wait_for_tile(tile_id);
+	if (!tile_status) {
+		return 0;
+	}
+	/*while (c->tile_buffer.get_buffer_size(tile_id) == 0) {
 		this_thread::sleep_for(chrono::milliseconds(1));
 		if (!keep_working) {
 			return 0;
 		}
-	}
+	}*/
 
 	// Retrieve the next frame and forward it to the data parser
 	ReceivedTile t = c->tile_buffer.next(tile_id);
@@ -673,7 +688,8 @@ int send_audio(void* data, uint32_t size) {
 
 	// Required parameters
 	uint32_t buflen_nheader = BUFLEN - sizeof(PacketType) - sizeof(PacketHeader);
-	buflen_nheader = 1152; // TODO check this, pretty sure this can be bigger
+	// TODO: Calculate values using constants
+	buflen_nheader = 1152;
 	uint32_t current_offset = 0;
 	uint32_t remaining = size;
 	int full_size_sent = 0;
@@ -744,13 +760,17 @@ int get_audio_size(uint32_t client_id) {
 	
 	// Wait until a new frame is available
 	//timeBeginPeriod(1);
-	while (c->audio_buffer.get_buffer_size() == 0) {
+	bool audio_ready = c->audio_buffer.wait_for_audio();
+	if (!audio_ready) {
+		return 0;
+	}
+	/*while (c->audio_buffer.get_buffer_size() == 0) {
 		this_thread::sleep_for(chrono::milliseconds(1)); // TODO: remove all of this pull logic and replace it with callbacks
 		c = find_or_add_receiver(client_id);
 		if (!keep_working) {
 			return 0;
 		}
-	}
+	}*/
 	//timeEndPeriod(1);
 	// Retrieve the next frame and forward it to the data parser
 	ReceivedAudio t = c->audio_buffer.next();
