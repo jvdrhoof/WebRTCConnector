@@ -6,6 +6,18 @@ This repository contains the Unity plugin that can be used to communicate with t
 
 If you are using WSL and you want to know what ip to use check: https://github.ugent.be/madfr/l4s-proxy-windows-testapp
 
+## Build instructions
+
+Building is done with `cmake`. It should work on all major platforms.
+
+```
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=./installed
+cmake --build build
+cmake --build build --target install
+```
+
+This will install the dynamic library in `installed/bin` (on Windows) or `installed/lib` (on Linux and Mac).
+
 ## C# Examples
 
 ### Receive Example
